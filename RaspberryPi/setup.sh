@@ -1,54 +1,74 @@
 #!/bin/bash
 
+set -e
+
+echo "🚀 Starting unattended setup for Bee Varroa Detection on Raspberry Pi..."
+
 # === CONFIGURATION ===
-ENV_NAME="bee-env"
-PYTHON_FILE="varroaDetector.py"
-INSTALL_DIR="$HOME/miniforge3"
-ENV_YML_FILE="bee_env.yml"
+ENV_NAME="beemite_env"
+PYTHON_VERSION="3.10"
+SCRIPT_NAME="varroaDetector.py"
+ANACONDA_INSTALLER="Anaconda3-2023.07-2-Linux-aarch64.sh"
+ANACONDA_URL="https://repo.anaconda.com/archive/$ANACONDA_INSTALLER"
 
-echo "🚀 Starting setup..."
+# === 1. Install System Dependencies ===
+echo "🔧 Installing required system packages..."
+sudo apt update && sudo apt install -y \
+  libcap-dev \
+  python3-opencv \
+  libatlas-base-dev \
+  libjpeg-dev \
+  libtiff-dev \
+  libpng-dev \
+  libavcodec-dev \
+  libavformat-dev \
+  libswscale-dev \
+  libv4l-dev \
+  libxvidcore-dev \
+  libx264-dev \
+  libgtk-3-dev \
+  libcanberra-gtk* \
+  cmake \
+  unzip \
+  wget \
+  git \
+  curl \
+  build-essential
 
-# === UPDATE & INSTALL SYSTEM DEPS ===
-sudo apt update -y
-sudo apt install -y wget git libatlas-base-dev libjpeg-dev libtiff5-dev libjasper-dev libpng-dev libavcodec-dev libavformat-dev libswscale-dev libv4l-dev libgtk-3-dev libcanberra-gtk* python3-dev python3-pip cmake build-essential
-
-# === INSTALL MINIFORGE (LIGHTWEIGHT ANACONDA FOR RASPBERRY PI) ===
-if [ ! -d "$INSTALL_DIR" ]; then
-    echo "📦 Installing Miniforge..."
-    wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-aarch64.sh -O ~/miniforge.sh
-    bash ~/miniforge.sh -b -p $INSTALL_DIR
-    echo 'export PATH="$HOME/miniforge3/bin:$PATH"' >> ~/.bashrc
-    export PATH="$HOME/miniforge3/bin:$PATH"
-    source ~/.bashrc
+# === 2. Install Anaconda if not already installed ===
+if ! command -v conda &> /dev/null; then
+  echo "📦 Installing Anaconda..."
+  wget -O ~/Downloads/$ANACONDA_INSTALLER "$ANACONDA_URL"
+  bash ~/Downloads/$ANACONDA_INSTALLER -b -p $HOME/anaconda3
+  eval "$($HOME/anaconda3/bin/conda shell.bash hook)"
+  conda init
 else
-    echo "✅ Miniforge already installed."
+  echo "✅ Anaconda already installed."
+  eval "$(conda shell.bash hook)"
 fi
 
-# === INIT CONDA & CREATE ENV ===
-eval "$($INSTALL_DIR/bin/conda shell.bash hook)"
-conda init
-source ~/.bashrc
-
-if conda info --envs | grep -q "$ENV_NAME"; then
-    echo "✅ Conda env '$ENV_NAME' already exists."
+# === 3. Create and activate conda environment ===
+if ! conda info --envs | grep -q "$ENV_NAME"; then
+  echo "🐍 Creating conda environment $ENV_NAME with Python $PYTHON_VERSION..."
+  conda create -y -n $ENV_NAME python=$PYTHON_VERSION
 else
-    echo "🧪 Creating conda environment..."
-    conda create -y -n $ENV_NAME python=3.10
+  echo "✅ Conda environment $ENV_NAME already exists."
 fi
 
+echo "🔄 Activating conda environment..."
 conda activate $ENV_NAME
 
-# === INSTALL PYTHON PACKAGES ===
-echo "📦 Installing Python packages in $ENV_NAME..."
-
+# === 4. Install Python packages ===
+echo "📦 Installing required Python packages in environment..."
 pip install --upgrade pip
-pip install ultralytics supervision opencv-python numpy matplotlib roboflow picamera2
+pip install opencv-python
+pip install roboflow
+pip install supervision
+pip install matplotlib
+pip install numpy
+pip install ultralytics
+pip install picamera2
 
-# === RUN PYTHON DETECTION SCRIPT ===
-if [ -f "$PYTHON_FILE" ]; then
-    echo "🎬 Running detection script: $PYTHON_FILE"
-    python $PYTHON_FILE
-else
-    echo "❌ ERROR: Python script '$PYTHON_FILE' not found!"
-    exit 1
-fi
+# === 5. Run your Python detection script ===
+echo "🎬 Running detection script: $SCRIPT_NAME"
+python $SCRIPT_NAME
