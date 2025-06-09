@@ -1,91 +1,55 @@
 #!/bin/bash
 
+# === VARROA DETECTION SETUP SCRIPT FOR RASPBERRY PI OS (DEBIAN 12 BOOKWORM) ===
+# Author: Kingshuk
+# Purpose: Unattended setup for Bee + Varroa Mite detection using PiCamera2
+
 set -e
 
-echo "🚀 Starting unattended setup for Bee Varroa Detection on Raspberry Pi..."
-
-# === CONFIGURATION ===
-ENV_NAME="beemite_env"
-PYTHON_VERSION="3.10"
-SCRIPT_NAME="varroaDetector.py"
-ANACONDA_INSTALLER="Anaconda3-2023.07-2-Linux-aarch64.sh"
-ANACONDA_URL="https://repo.anaconda.com/archive/$ANACONDA_INSTALLER"
-
-# === 1. Install System Dependencies ===
-echo "🔧 Installing required system packages..."
-sudo apt update && sudo apt install -y \
-  libcap-dev \
-  python3-opencv \
-  libatlas-base-dev \
-  libjpeg-dev \
-  libtiff-dev \
-  libpng-dev \
-  libavcodec-dev \
-  libavformat-dev \
-  libswscale-dev \
-  libv4l-dev \
-  libxvidcore-dev \
-  libx264-dev \
-  libgtk-3-dev \
-  libcanberra-gtk* \
-  cmake \
-  unzip \
-  wget \
-  git \
-  curl \
-  build-essential
-
-
-# echo "🔧 Installing system dependencies for BeeMite detection..."
-# sudo apt update && sudo apt install -y \
-#   python3-pip python3-opencv libcap-dev libcamera-dev \
-#   libjpeg-dev libtiff-dev libpng-dev libv4l-dev \
-#   libatlas-base-dev build-essential cmake git wget curl
-
-# echo "📦 Installing Python packages globally..."
-# pip3 install --upgrade pip
-# pip3 install roboflow supervision matplotlib numpy ultralytics picamera2
-
-# echo "🎬 Running detection script..."
-# python3 varroaDetector.py
-
-# === 2. Install Miniforge (better for Raspberry Pi) ===
-MINIFORGE_INSTALLER="Miniforge3-Linux-aarch64.sh"
-MINIFORGE_URL="https://github.com/conda-forge/miniforge/releases/latest/download/$MINIFORGE_INSTALLER"
-
-if ! command -v conda &> /dev/null; then
-  echo "📦 Installing Miniforge..."
-  wget -O ~/Downloads/$MINIFORGE_INSTALLER "$MINIFORGE_URL"
-  bash ~/Downloads/$MINIFORGE_INSTALLER -b -p $HOME/miniforge3
-  eval "$($HOME/miniforge3/bin/conda shell.bash hook)"
-  conda init
-else
-  echo "✅ Conda already installed (probably via Miniforge or Anaconda)."
-  eval "$(conda shell.bash hook)"
+echo "🔍 Checking for Raspberry Pi OS (Debian 12 Bookworm)..."
+. /etc/os-release
+if [[ "$VERSION_CODENAME" != "bookworm" ]]; then
+    echo "❌ This script is intended for Raspberry Pi OS (Debian 12 Bookworm)."
+    exit 1
 fi
 
-# === 3. Create and activate conda environment ===
-if ! conda info --envs | grep -q "$ENV_NAME"; then
-  echo "🐍 Creating conda environment $ENV_NAME with Python $PYTHON_VERSION..."
-  conda create -y -n $ENV_NAME python=$PYTHON_VERSION
-else
-  echo "✅ Conda environment $ENV_NAME already exists."
-fi
+echo "✅ Detected Raspberry Pi OS Bookworm"
 
-echo "🔄 Activating conda environment..."
-conda activate $ENV_NAME
+echo "🔁 Updating system packages..."
+sudo apt update && sudo apt upgrade -y
 
-# === 4. Install Python packages ===
-echo "📦 Installing required Python packages in environment..."
+echo "📦 Installing core dependencies..."
+sudo apt install -y python3 python3-pip python3-venv git libatlas-base-dev libhdf5-dev libhdf5-serial-dev libjpeg-dev libqtgui4 libqt4-test libilmbase-dev libopenexr-dev libgstreamer1.0-dev libavcodec-dev libavformat-dev libswscale-dev libtbb2 libtbb-dev libdc1394-22-dev
+
+echo "🎥 Enabling camera support..."
+sudo raspi-config nonint do_camera 0
+echo "✅ Camera enabled (you may need to reboot)"
+
+echo "📦 Installing libcamera + PiCamera2..."
+sudo apt install -y libcamera-dev libcamera-apps python3-libcamera python3-picamera2
+
+echo "🧪 Testing camera..."
+libcamera-hello --version || echo "⚠️ libcamera test skipped or failed (headless?)"
+
+echo "🐍 Creating Python virtual environment..."
+cd ~
+python3 -m venv beemite_env
+source ~/beemite_env/bin/activate
+
+echo "📦 Installing Python packages..."
 pip install --upgrade pip
-pip install opencv-python
-pip install roboflow
-pip install supervision
-pip install matplotlib
-pip install numpy
-pip install ultralytics
-pip install picamera2
+pip install opencv-python numpy matplotlib supervision ultralytics
 
-# === 5. Run your Python detection script ===
-echo "🎬 Running detection script: $SCRIPT_NAME"
-python $SCRIPT_NAME
+echo "✅ Python environment ready."
+
+echo "📂 Cloning project (if not already)..."
+cd ~
+if [ ! -d "beeMite" ]; then
+    git clone https://github.com/afkingshuk/beeMite.git
+fi
+
+echo "📁 Entering RaspberryPi project folder..."
+cd ~/beeMite/RaspberryPi
+
+echo "🚦 Running live detector..."
+python3 varroaDetector.py
