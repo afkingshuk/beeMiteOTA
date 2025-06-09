@@ -35,15 +35,32 @@ sudo apt update && sudo apt install -y \
   curl \
   build-essential
 
-# === 2. Install Anaconda if not already installed ===
+
+echo "🔧 Installing system dependencies for BeeMite detection..."
+sudo apt update && sudo apt install -y \
+  python3-pip python3-opencv libcap-dev libcamera-dev \
+  libjpeg-dev libtiff-dev libpng-dev libv4l-dev \
+  libatlas-base-dev build-essential cmake git wget curl
+
+echo "📦 Installing Python packages globally..."
+pip3 install --upgrade pip
+pip3 install roboflow supervision matplotlib numpy ultralytics picamera2
+
+# echo "🎬 Running detection script..."
+# python3 varroaDetector.py
+
+# === 2. Install Miniforge (better for Raspberry Pi) ===
+MINIFORGE_INSTALLER="Miniforge3-Linux-aarch64.sh"
+MINIFORGE_URL="https://github.com/conda-forge/miniforge/releases/latest/download/$MINIFORGE_INSTALLER"
+
 if ! command -v conda &> /dev/null; then
-  echo "📦 Installing Anaconda..."
-  wget -O ~/Downloads/$ANACONDA_INSTALLER "$ANACONDA_URL"
-  bash ~/Downloads/$ANACONDA_INSTALLER -b -p $HOME/anaconda3
-  eval "$($HOME/anaconda3/bin/conda shell.bash hook)"
+  echo "📦 Installing Miniforge..."
+  wget -O ~/Downloads/$MINIFORGE_INSTALLER "$MINIFORGE_URL"
+  bash ~/Downloads/$MINIFORGE_INSTALLER -b -p $HOME/miniforge3
+  eval "$($HOME/miniforge3/bin/conda shell.bash hook)"
   conda init
 else
-  echo "✅ Anaconda already installed."
+  echo "✅ Conda already installed (probably via Miniforge or Anaconda)."
   eval "$(conda shell.bash hook)"
 fi
 
