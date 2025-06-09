@@ -36,15 +36,15 @@ sudo apt update && sudo apt install -y \
   build-essential
 
 
-echo "🔧 Installing system dependencies for BeeMite detection..."
-sudo apt update && sudo apt install -y \
-  python3-pip python3-opencv libcap-dev libcamera-dev \
-  libjpeg-dev libtiff-dev libpng-dev libv4l-dev \
-  libatlas-base-dev build-essential cmake git wget curl
+# echo "🔧 Installing system dependencies for BeeMite detection..."
+# sudo apt update && sudo apt install -y \
+#   python3-pip python3-opencv libcap-dev libcamera-dev \
+#   libjpeg-dev libtiff-dev libpng-dev libv4l-dev \
+#   libatlas-base-dev build-essential cmake git wget curl
 
-echo "📦 Installing Python packages globally..."
-pip3 install --upgrade pip
-pip3 install roboflow supervision matplotlib numpy ultralytics picamera2
+# echo "📦 Installing Python packages globally..."
+# pip3 install --upgrade pip
+# pip3 install roboflow supervision matplotlib numpy ultralytics picamera2
 
 # echo "🎬 Running detection script..."
 # python3 varroaDetector.py
