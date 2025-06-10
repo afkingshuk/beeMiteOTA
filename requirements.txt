@@ -4,3 +4,4 @@ supervision
 matplotlib
 # roboflow
 numpy
+picamera2
