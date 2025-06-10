@@ -26,6 +26,8 @@ print("📦 Loading YOLO models...")
 bee_model = YOLO(str(MODEL_BEE_PATH))
 mite_model = YOLO(str(MODEL_VARROA_PATH))
 box_annotator = sv.BoxAnnotator()
+if(bee_model) : print(f'{bee_model} Loaded')
+if(mite_model) : print(f'{mite_model} Loaded')
 
 # === CAMERA DETECTION ===
 USE_CAMERA = not args.demo
@@ -45,7 +47,11 @@ frame_count = 0
 recent_frames = []
 
 print("🚀 Detection started (press 'q' to quit)...")
-
+if(cap.isOpened()): 
+    print(f'Video found in {DEMO_VIDEO_PATH}')
+else : 
+    print(f'Video Not found in {DEMO_VIDEO_PATH}')
+    
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
