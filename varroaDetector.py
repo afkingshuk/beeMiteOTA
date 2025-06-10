@@ -174,6 +174,8 @@ while True:
 
         # Put crop back into frame
         frame[y1p:y2p, x1p:x2p] = bee_crop_annotated
+        cv2.imshow("Bee + Varroa Detector", frame)
+
 
     # === Keep only frames that have mites ===
     if frame_has_mites:
