@@ -2,7 +2,7 @@
 
 ENV_NAME="beemite_env"
 REPO_DIR="$HOME/beeMite"
-PYTHON_SCRIPT="RaspberryPi/varroaDetector.py"
+PYTHON_SCRIPT="/varroaDetector.py"
 
 eval "$($HOME/miniforge3/bin/conda shell.bash hook)"
 conda activate $ENV_NAME
