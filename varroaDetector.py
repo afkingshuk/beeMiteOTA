@@ -1,78 +1,117 @@
+import os
 import cv2
-import time
 import numpy as np
 from ultralytics import YOLO
 import supervision as sv
-from picamera2 import Picamera2
+from pathlib import Path
+import argparse
 
-# === CONFIG ===
-BEE_MODEL_PATH = "Models/yolo11n_bee.pt"
-VARROA_MODEL_PATH = "Models/yolov11_varroa.pt"
-CONFIDENCE_THRESHOLD = 0.4
-CROP_PADDING = 120  # breathing room for cropping
+# === CLI ARGUMENTS ===
+parser = argparse.ArgumentParser(description='Bee + Varroa Mite Detector')
+parser.add_argument('--demo', action='store_true', help='Run in demo mode with fallback video')
+args = parser.parse_args()
 
-# === INIT MODELS ===
-print("📦 Loading models...")
-bee_model = YOLO(BEE_MODEL_PATH)
-mite_model = YOLO(VARROA_MODEL_PATH)
+# === CONFIGURATION ===
+PROJECT_DIR = Path(__file__).resolve().parent
+MODEL_BEE_PATH = PROJECT_DIR / "Models/yolo11n_bee.pt"
+MODEL_VARROA_PATH = PROJECT_DIR / "Models/yolov11_varroa.pt"
+DEMO_VIDEO_PATH = PROJECT_DIR / "video/sample_video.mp4"
+CAMERA_INDEX = 0
+FRAME_SKIP = 5
+CONFIDENCE_THRESHOLD = 0.25
+BEE_PADDING = 10
 
-# === INIT CAMERA ===
-print("📷 Starting PiCamera...")
-picam2 = Picamera2()
-picam2.configure(picam2.create_preview_configuration(main={"format": "RGB888", "size": (640, 480)}))
-picam2.start()
-time.sleep(2)
+# === LOAD MODELS ===
+print("📦 Loading YOLO models...")
+bee_model = YOLO(str(MODEL_BEE_PATH))
+mite_model = YOLO(str(MODEL_VARROA_PATH))
+box_annotator = sv.BoxAnnotator()
 
-# === LIVE LOOP ===
-print("🚀 Running live detection. Press 'q' to quit.")
-annotator = sv.BoxAnnotator()
+# === CAMERA DETECTION ===
+USE_CAMERA = not args.demo
+if USE_CAMERA:
+    print("🔍 Trying to open camera...")
+    cap = cv2.VideoCapture(CAMERA_INDEX)
+    if not cap.isOpened():
+        print("⚠️ Camera not detected — switching to demo mode.")
+        USE_CAMERA = False
+        cap = cv2.VideoCapture(str(DEMO_VIDEO_PATH))
+else:
+    print("🎬 Running in demo mode.")
+    cap = cv2.VideoCapture(str(DEMO_VIDEO_PATH))
 
-while True:
-    frame = picam2.capture_array()
-    display_frame = frame.copy()
+# === MAIN LOOP ===
+frame_count = 0
+recent_frames = []
 
-    # Step 1: Detect Bees
-    bee_results = bee_model(frame, verbose=False)[0]
-    bee_detections = bee_results.boxes
+print("🚀 Detection started (press 'q' to quit)...")
 
-    for i, bee_box in enumerate(bee_detections):
-        x1, y1, x2, y2 = map(int, bee_box.xyxy[0])
-        h, w, _ = frame.shape
-        x1p = max(x1 - CROP_PADDING, 0)
-        y1p = max(y1 - CROP_PADDING, 0)
-        x2p = min(x2 + CROP_PADDING, w)
-        y2p = min(y2 + CROP_PADDING, h)
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        print("⚠️ Frame not read. End of video or camera error.")
+        break
+
+    frame_count += 1
+    if frame_count % FRAME_SKIP != 0:
+        continue
+
+    original = frame.copy()
+    height, width = frame.shape[:2]
+    detections = bee_model(frame)[0].boxes
+
+    for box in detections:
+        x1, y1, x2, y2 = map(int, box.xyxy[0])
+        conf = float(box.conf[0])
+
+        if conf < CONFIDENCE_THRESHOLD:
+            continue
+
+        # Pad crop
+        x1p = max(0, x1 - BEE_PADDING)
+        y1p = max(0, y1 - BEE_PADDING)
+        x2p = min(width, x2 + BEE_PADDING)
+        y2p = min(height, y2 + BEE_PADDING)
 
         bee_crop = frame[y1p:y2p, x1p:x2p]
 
-        # Step 2: Detect Mites on the cropped bee
-        mite_result = mite_model.predict(source=bee_crop, conf=CONFIDENCE_THRESHOLD, verbose=False)[0]
-        mite_boxes = mite_result.boxes
+        # Mite detection
+        mites = mite_model(bee_crop)[0].boxes
+        mite_boxes = []
+        mite_labels = []
+        mite_confs = []
 
-        # Adjust mite box positions relative to full frame
-        for j, mbox in enumerate(mite_boxes):
+        for mbox in mites:
             mx1, my1, mx2, my2 = map(int, mbox.xyxy[0])
-            mx1 += x1p
-            mx2 += x1p
-            my1 += y1p
-            my2 += y1p
+            mconf = float(mbox.conf[0])
+            if mconf >= CONFIDENCE_THRESHOLD:
+                mite_boxes.append([mx1, my1, mx2, my2])
+                mite_labels.append("Varroa")
+                mite_confs.append(mconf)
 
-            # Draw mite boxes in red
-            cv2.rectangle(display_frame, (mx1, my1), (mx2, my2), (0, 0, 255), 2)
-            cv2.putText(display_frame, f"mite {mbox.conf[0]:.2f}", (mx1, my1 - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+        # Annotate bee crop with mite detections
+        detections_sv = sv.Detections(
+            xyxy=np.array(mite_boxes),
+            class_id=np.zeros(len(mite_boxes), dtype=int),
+            confidence=np.array(mite_confs),
+        )
 
-        # Draw bee box in green
-        cv2.rectangle(display_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        cv2.putText(display_frame, f"bee {bee_box.conf[0]:.2f}", (x1, y1 - 5),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        bee_crop_annotated = box_annotator.annotate(
+            bee_crop.copy(), detections=detections_sv, labels=mite_labels
+        )
 
-    # Show result on screen
-    cv2.imshow("🐝 Bee & Varroa Detector", display_frame)
+        # Put crop back into frame
+        frame[y1p:y2p, x1p:x2p] = bee_crop_annotated
 
-    # Exit on 'q'
+    # Show frame
+    cv2.imshow("🐝 Bee + Varroa Detector", frame)
+
+    # Keep last 10 frames
+    recent_frames = (recent_frames + [frame.copy()])[-10:]
+
     if cv2.waitKey(1) & 0xFF == ord('q'):
+        print("👋 Exiting.")
         break
 
-picam2.stop()
+cap.release()
 cv2.destroyAllWindows()
