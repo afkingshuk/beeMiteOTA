@@ -98,14 +98,18 @@ while True:
 
     # Build detections for full frame annotation
     bee_xyxy = np.array([box.xyxy[0].cpu().numpy() for box in detections], dtype=np.float32)
+    if bee_xyxy.shape[0] == 0:
+        bee_xyxy = np.empty((0, 4), dtype=np.float32)
+    
     bee_conf = np.array([float(box.conf[0]) for box in detections], dtype=np.float32)
     bee_class_id = np.zeros(len(detections), dtype=int)
-
+    
     detections_bees_sv = sv.Detections(
         xyxy=bee_xyxy,
         class_id=bee_class_id,
         confidence=bee_conf
     )
+
 
     if len(detections) > 0:
         print(f"✅ Bee(s) detected in frame {frame_count}: {len(detections)} bees")
