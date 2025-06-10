@@ -9,7 +9,7 @@ from picamera2 import Picamera2
 BEE_MODEL_PATH = "Models/yolo11n_bee.pt"
 VARROA_MODEL_PATH = "Models/yolov11_varroa.pt"
 CONFIDENCE_THRESHOLD = 0.4
-CROP_PADDING = 20  # breathing room for cropping
+CROP_PADDING = 120  # breathing room for cropping
 
 # === INIT MODELS ===
 print("📦 Loading models...")
