@@ -25,7 +25,7 @@ from pathlib import Path
 import argparse
 import matplotlib.pyplot as plt
 # Optional PiCamera2 (commented — enable if you want real PiCam feed)
-from picamera2 import Picamera2
+# from picamera2 import Picamera2
 
 # === CLI ARGUMENTS ===
 parser = argparse.ArgumentParser(description='Bee + Varroa Mite Detector')
