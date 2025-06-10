@@ -15,7 +15,7 @@ args = parser.parse_args()
 PROJECT_DIR = Path(__file__).resolve().parent
 MODEL_BEE_PATH = PROJECT_DIR / "Models/yolo11n_bee.pt"
 MODEL_VARROA_PATH = PROJECT_DIR / "Models/yolov11_varroa.pt"
-DEMO_VIDEO_PATH = PROJECT_DIR / "video/sample_video.mp4"
+DEMO_VIDEO_PATH = PROJECT_DIR / "Videos/VARROA MITE DETECTION AND SAMPLING.mp4"
 CAMERA_INDEX = 0
 FRAME_SKIP = 5
 CONFIDENCE_THRESHOLD = 0.25
@@ -51,7 +51,7 @@ if(cap.isOpened()):
     print(f'Video found in {DEMO_VIDEO_PATH}')
 else : 
     print(f'Video Not found in {DEMO_VIDEO_PATH}')
-    
+
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
