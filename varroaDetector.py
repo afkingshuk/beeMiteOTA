@@ -7,7 +7,7 @@ from pathlib import Path
 import argparse
 import matplotlib.pyplot as plt
 # Optional PiCamera2 (commented — enable if you want real PiCam feed)
-# from picamera2 import Picamera2
+from picamera2 import Picamera2
 
 # === CLI ARGUMENTS ===
 parser = argparse.ArgumentParser(description='Bee + Varroa Mite Detector')
@@ -21,9 +21,9 @@ MODEL_BEE_PATH = PROJECT_DIR / "Models/yolo11n_bee.pt"
 MODEL_VARROA_PATH = PROJECT_DIR / "Models/yolov11_varroa.pt"
 DEMO_VIDEO_PATH = PROJECT_DIR / "Videos/VARROA MITE DETECTION AND SAMPLING.mp4"
 CAMERA_INDEX = 0
-FRAME_SKIP = 5
+FRAME_SKIP = 25
 CONFIDENCE_THRESHOLD = 0.25
-BEE_PADDING = 10
+BEE_PADDING = 150
 
 # === LOAD MODELS ===
 print("📦 Loading YOLO models...")
