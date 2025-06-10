@@ -103,7 +103,9 @@ while cap.isOpened():
         )
 
         bee_crop_annotated = box_annotator.annotate(
-            bee_crop.copy(), detections=detections_sv, labels=mite_labels
+            bee_crop.copy(),
+            detections=detections_sv,
+            labels=box_annotator.generate_labels(detections=detections_sv, labels=mite_labels)
         )
 
         # Put crop back into frame
