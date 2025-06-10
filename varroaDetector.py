@@ -102,11 +102,18 @@ while cap.isOpened():
             confidence=np.array(mite_confs),
         )
 
+        # Box drawing
         bee_crop_annotated = box_annotator.annotate(
-            bee_crop.copy(),
-            detections=detections_sv,
-            labels=box_annotator.generate_labels(detections=detections_sv, labels=mite_labels)
+            bee_crop.copy(), detections=detections_sv
         )
+
+        # Manual label drawing
+        for i, box in enumerate(mite_boxes):
+            x1, y1, x2, y2 = map(int, box)
+            label = f"{mite_labels[i]} ({mite_confs[i]:.2f})"
+            cv2.putText(bee_crop_annotated, label, (x1, y1 - 10), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+
 
         # Put crop back into frame
         frame[y1p:y2p, x1p:x2p] = bee_crop_annotated
