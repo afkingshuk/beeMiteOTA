@@ -1,4 +1,22 @@
 import os
+import sys
+
+# Setup and check required packages
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(PROJECT_DIR)
+from check_imports import check_and_install_requirements
+check_and_install_requirements(os.path.join(PROJECT_DIR, "requirements.txt"))
+
+# # Now safe to import rest of modules
+# import cv2
+# import numpy as np
+# from ultralytics import YOLO
+# import supervision as sv
+# from pathlib import Path
+# import argparse
+# import matplotlib.pyplot as plt
+
+import os
 import cv2
 import numpy as np
 from ultralytics import YOLO
