@@ -7,16 +7,7 @@ sys.path.append(PROJECT_DIR)
 from check_imports import check_and_install_requirements
 check_and_install_requirements(os.path.join(PROJECT_DIR, "requirements.txt"))
 
-# # Now safe to import rest of modules
-# import cv2
-# import numpy as np
-# from ultralytics import YOLO
-# import supervision as sv
-# from pathlib import Path
-# import argparse
-# import matplotlib.pyplot as plt
-
-import os
+# Now safe to import rest of modules
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -42,6 +33,7 @@ CAMERA_INDEX = 0
 FRAME_SKIP = 25
 CONFIDENCE_THRESHOLD = 0.25
 BEE_PADDING = 150
+NUM_RECENT_FRAMES_TO_KEEP = 10   # <=== You can control how many frames to keep
 
 # === LOAD MODELS ===
 print("📦 Loading YOLO models...")
@@ -58,6 +50,7 @@ USE_PICAMERA = args.picamera
 
 if USE_PICAMERA:
     print("📷 Running with PiCamera2...")
+    from picamera2 import Picamera2
     picam2 = Picamera2()
     picam2.configure(picam2.create_preview_configuration(main={"format": "RGB888", "size": (640, 480)}))
     picam2.start()
@@ -103,10 +96,23 @@ while True:
     height, width = frame.shape[:2]
     detections = bee_model(frame)[0].boxes
 
+    # Build detections for full frame annotation
+    bee_xyxy = np.array([box.xyxy[0].cpu().numpy() for box in detections], dtype=np.float32)
+    bee_conf = np.array([float(box.conf[0]) for box in detections], dtype=np.float32)
+    bee_class_id = np.zeros(len(detections), dtype=int)
+
+    detections_bees_sv = sv.Detections(
+        xyxy=bee_xyxy,
+        class_id=bee_class_id,
+        confidence=bee_conf
+    )
+
     if len(detections) > 0:
         print(f"✅ Bee(s) detected in frame {frame_count}: {len(detections)} bees")
     else:
         print(f"⛔ No bee detected in frame {frame_count}")
+
+    frame_has_mites = False  # <=== Track whether this frame has mites on any bee
 
     for box in detections:
         x1, y1, x2, y2 = map(int, box.xyxy[0])
@@ -136,6 +142,8 @@ while True:
                 mite_boxes.append([mx1, my1, mx2, my2])
                 mite_labels.append("Varroa")
                 mite_confs.append(mconf)
+                frame_has_mites = True   # <=== Set flag if any mite detected
+                print(f"🛑 MITE DETECTED in frame {frame_count}: bee crop [{x1p}:{x2p}, {y1p}:{y2p}] conf {mconf:.2f}")
 
         # === SAFE HANDLING for empty detections ===
         xyxy_array = np.array(mite_boxes, dtype=np.float32)
@@ -163,11 +171,16 @@ while True:
         # Put crop back into frame
         frame[y1p:y2p, x1p:x2p] = bee_crop_annotated
 
-    # Show frame
-    cv2.imshow("🐝 Bee + Varroa Detector", frame)
+    # === Keep only frames that have mites ===
+    if frame_has_mites:
+        print(f"📸 Saving frame {frame_count} with mites")
+        recent_frames = (recent_frames + [frame.copy()])[-NUM_RECENT_FRAMES_TO_KEEP:]
 
-    # Keep last 10 frames
-    recent_frames = (recent_frames + [frame.copy()])[-10:]
+    # Annotate full frame with bee boxes
+    frame_annotated = box_annotator.annotate(frame.copy(), detections=detections_bees_sv)
+
+    # Show annotated frame
+    cv2.imshow("🐝 Bee + Varroa Detector", frame_annotated)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         print("👋 Exiting.")
@@ -181,9 +194,9 @@ else:
 
 cv2.destroyAllWindows()
 
-# === OPTIONAL: Plot last 10 frames ===
+# === OPTIONAL: Plot last N frames ===
 if len(recent_frames) > 0:
-    print(f"\n🖼️ Displaying last {len(recent_frames)} frames...")
+    print(f"\n🖼️ Displaying last {len(recent_frames)} frames with mites...")
     cols = min(len(recent_frames), 6)
     rows = (len(recent_frames) + cols - 1) // cols
     fig, axes = plt.subplots(rows, cols, figsize=(18, 6 * rows))
