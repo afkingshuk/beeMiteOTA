@@ -5,10 +5,14 @@ from ultralytics import YOLO
 import supervision as sv
 from pathlib import Path
 import argparse
+import matplotlib.pyplot as plt
+# Optional PiCamera2 (commented — enable if you want real PiCam feed)
+# from picamera2 import Picamera2
 
 # === CLI ARGUMENTS ===
 parser = argparse.ArgumentParser(description='Bee + Varroa Mite Detector')
 parser.add_argument('--demo', action='store_true', help='Run in demo mode with fallback video')
+parser.add_argument('--picamera', action='store_true', help='Run with Raspberry Pi Camera (PiCamera2)')
 args = parser.parse_args()
 
 # === CONFIGURATION ===
@@ -26,12 +30,20 @@ print("📦 Loading YOLO models...")
 bee_model = YOLO(str(MODEL_BEE_PATH))
 mite_model = YOLO(str(MODEL_VARROA_PATH))
 box_annotator = sv.BoxAnnotator()
-if(bee_model) : print(f'{bee_model} Loaded')
-if(mite_model) : print(f'{mite_model} Loaded')
 
-# === CAMERA DETECTION ===
+print(f'✅ Bee model loaded: {MODEL_BEE_PATH.name}')
+print(f'✅ Varroa model loaded: {MODEL_VARROA_PATH.name}')
+
+# === CAMERA / VIDEO SETUP ===
 USE_CAMERA = not args.demo
-if USE_CAMERA:
+USE_PICAMERA = args.picamera
+
+if USE_PICAMERA:
+    print("📷 Running with PiCamera2...")
+    picam2 = Picamera2()
+    picam2.configure(picam2.create_preview_configuration(main={"format": "RGB888", "size": (640, 480)}))
+    picam2.start()
+elif USE_CAMERA:
     print("🔍 Trying to open camera...")
     cap = cv2.VideoCapture(CAMERA_INDEX)
     if not cap.isOpened():
@@ -47,16 +59,23 @@ frame_count = 0
 recent_frames = []
 
 print("🚀 Detection started (press 'q' to quit)...")
-if(cap.isOpened()): 
-    print(f'Video found in {DEMO_VIDEO_PATH}')
-else : 
-    print(f'Video Not found in {DEMO_VIDEO_PATH}')
 
-while cap.isOpened():
-    ret, frame = cap.read()
-    if not ret:
-        print("⚠️ Frame not read. End of video or camera error.")
-        break
+if not USE_PICAMERA:
+    if cap.isOpened(): 
+        print(f'✅ Video opened: {DEMO_VIDEO_PATH if not USE_CAMERA else "Camera feed"}')
+    else:
+        print(f'❌ Failed to open video or camera.')
+
+while True:
+    # Capture frame
+    if USE_PICAMERA:
+        frame = picam2.capture_array()
+        ret = True
+    else:
+        ret, frame = cap.read()
+        if not ret:
+            print("⚠️ Frame not read. End of video or camera error.")
+            break
 
     frame_count += 1
     if frame_count % FRAME_SKIP != 0:
@@ -65,6 +84,11 @@ while cap.isOpened():
     original = frame.copy()
     height, width = frame.shape[:2]
     detections = bee_model(frame)[0].boxes
+
+    if len(detections) > 0:
+        print(f"✅ Bee(s) detected in frame {frame_count}: {len(detections)} bees")
+    else:
+        print(f"⛔ No bee detected in frame {frame_count}")
 
     for box in detections:
         x1, y1, x2, y2 = map(int, box.xyxy[0])
@@ -95,14 +119,18 @@ while cap.isOpened():
                 mite_labels.append("Varroa")
                 mite_confs.append(mconf)
 
-        # Annotate bee crop with mite detections
+        # === SAFE HANDLING for empty detections ===
+        xyxy_array = np.array(mite_boxes, dtype=np.float32)
+        if xyxy_array.shape[0] == 0:
+            xyxy_array = np.empty((0, 4), dtype=np.float32)
+
         detections_sv = sv.Detections(
-            xyxy=np.array(mite_boxes),
+            xyxy=xyxy_array,
             class_id=np.zeros(len(mite_boxes), dtype=int),
-            confidence=np.array(mite_confs),
+            confidence=np.array(mite_confs, dtype=np.float32),
         )
 
-        # Box drawing
+        # Annotate bee crop
         bee_crop_annotated = box_annotator.annotate(
             bee_crop.copy(), detections=detections_sv
         )
@@ -113,7 +141,6 @@ while cap.isOpened():
             label = f"{mite_labels[i]} ({mite_confs[i]:.2f})"
             cv2.putText(bee_crop_annotated, label, (x1, y1 - 10), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-
 
         # Put crop back into frame
         frame[y1p:y2p, x1p:x2p] = bee_crop_annotated
@@ -128,5 +155,28 @@ while cap.isOpened():
         print("👋 Exiting.")
         break
 
-cap.release()
+# Cleanup
+if not USE_PICAMERA:
+    cap.release()
+else:
+    picam2.stop()
+
 cv2.destroyAllWindows()
+
+# === OPTIONAL: Plot last 10 frames ===
+if len(recent_frames) > 0:
+    print(f"\n🖼️ Displaying last {len(recent_frames)} frames...")
+    cols = min(len(recent_frames), 6)
+    rows = (len(recent_frames) + cols - 1) // cols
+    fig, axes = plt.subplots(rows, cols, figsize=(18, 6 * rows))
+    axes = axes.flatten() if isinstance(axes, np.ndarray) else [axes]
+
+    for idx, img in enumerate(recent_frames):
+        axes[idx].imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        axes[idx].axis('off')
+
+    for j in range(len(recent_frames), len(axes)):
+        axes[j].axis('off')
+
+    plt.tight_layout()
+    plt.show()
