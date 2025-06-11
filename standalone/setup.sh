@@ -38,5 +38,5 @@ sudo python3 -m pip install \
     numpy<2
 
 # 4️⃣ Final message
-echo "✅ beeMite SYSTEM install complete (no venv)."
+echo "✅ beeMite sSYSTEM install complete (no venv)."
 echo "👉 You can now run: python3 test_picamera2_preview.py"
