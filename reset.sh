@@ -51,13 +51,13 @@ fi
 echo "==== Removing BeeMite install flag ===="
 rm -f "$HOME/.beemite_installed"
 
-# === Run main BeeMite install script ===
-if [ -f "$MAIN_INSTALL_SCRIPT" ]; then
-    echo "==== Running BeeMite main install script: $MAIN_INSTALL_SCRIPT ===="
-    bash "$MAIN_INSTALL_SCRIPT"
-else
-    echo "ERROR: Main BeeMite install script not found: $MAIN_INSTALL_SCRIPT"
-    exit 1
-fi
+# # === Run main BeeMite install script ===
+# if [ -f "$MAIN_INSTALL_SCRIPT" ]; then
+#     echo "==== Running BeeMite main install script: $MAIN_INSTALL_SCRIPT ===="
+#     bash "$MAIN_INSTALL_SCRIPT"
+# else
+#     echo "ERROR: Main BeeMite install script not found: $MAIN_INSTALL_SCRIPT"
+#     exit 1
+# fi
 
 echo "==== Complete system reset and reinstall done! ===="
