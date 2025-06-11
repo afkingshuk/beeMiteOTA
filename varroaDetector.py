@@ -2,11 +2,11 @@ import os
 import sys
 import time
 
-# # Setup and check required packages
-# PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
-# sys.path.append(PROJECT_DIR)
-# from check_imports import check_and_install_requirements
-# check_and_install_requirements(os.path.join(PROJECT_DIR, "requirements.txt"))
+# Setup and check required packages
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(PROJECT_DIR)
+from check_imports import check_and_install_requirements
+check_and_install_requirements(os.path.join(PROJECT_DIR, "requirements.txt"))
 
 # Now safe to import rest of modules
 import cv2
@@ -19,12 +19,9 @@ import matplotlib.pyplot as plt
 
 # === CLI ARGUMENTS ===
 parser = argparse.ArgumentParser(description='Bee + Varroa Mite Detector')
-group = parser.add_mutually_exclusive_group()
-group.add_argument('--demo', action='store_true', help='Run in demo mode with fallback video')
-group.add_argument('--camera', action='store_true', help='Run with USB or CSI camera via OpenCV')
-group.add_argument('--picamera', action='store_true', help='Run with Raspberry Pi Camera (Picamera2)')
+parser.add_argument('--demo', action='store_true', help='Run in demo mode with fallback video')
+parser.add_argument('--picamera', action='store_true', help='Run with Raspberry Pi Camera (PiCamera2)')
 args = parser.parse_args()
-
 
 # === CONFIGURATION ===
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -47,25 +44,9 @@ print(f'✅ Bee model loaded: {MODEL_BEE_PATH.name}')
 print(f'✅ Varroa model loaded: {MODEL_VARROA_PATH.name}')
 
 # === CAMERA / VIDEO SETUP ===
-# Default behavior is Picamera2
-USE_CAMERA = False
-USE_PICAMERA = True
-frame_source = "PICAMERA"
-
-if args.demo:
-    USE_CAMERA = False
-    USE_PICAMERA = False
-    frame_source = "DEMO"
-elif args.camera:
-    USE_CAMERA = True
-    USE_PICAMERA = False
-    frame_source = "CAMERA"
-elif args.picamera:
-    USE_CAMERA = False
-    USE_PICAMERA = True
-    frame_source = "PICAMERA"
-
-# frame_source = "UNKNOWN"
+USE_CAMERA = not args.demo
+USE_PICAMERA = args.picamera
+frame_source = "UNKNOWN"
 
 if USE_PICAMERA:
     try:
