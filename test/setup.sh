@@ -4,7 +4,8 @@ set -e
 echo "🐝 Starting USB camera beeMite installer..."
 
 # 1️⃣ Install Miniforge if not present
-if ! command -v conda &> /dev/null; then
+# 1️⃣ Install Miniforge if not present
+if [ ! -d "$HOME/miniforge3" ]; then
     echo "📦 Installing Miniforge..."
     wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-aarch64.sh -O Miniforge3.sh
     bash Miniforge3.sh -b -p $HOME/miniforge3
@@ -12,9 +13,10 @@ if ! command -v conda &> /dev/null; then
     conda init
     echo "✅ Miniforge installed."
 else
-    echo "✅ Miniforge already installed."
+    echo "✅ Miniforge already installed at $HOME/miniforge3."
     eval "$($HOME/miniforge3/bin/conda shell.bash hook)"
 fi
+
 
 # 2️⃣ Create testenv
 echo "🐍 Creating Conda env: testenv"
