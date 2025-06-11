@@ -2,11 +2,11 @@ import os
 import sys
 import time
 
-# Setup and check required packages
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(PROJECT_DIR)
-from check_imports import check_and_install_requirements
-check_and_install_requirements(os.path.join(PROJECT_DIR, "requirements.txt"))
+# # Setup and check required packages
+# PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+# sys.path.append(PROJECT_DIR)
+# from check_imports import check_and_install_requirements
+# check_and_install_requirements(os.path.join(PROJECT_DIR, "requirements.txt"))
 
 # Now safe to import rest of modules
 import cv2
