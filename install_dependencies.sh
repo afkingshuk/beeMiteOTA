@@ -34,7 +34,7 @@ echo "🐍 Setting up beemite_env conda environment..."
 conda remove -n beemite_env --all -y || true
 
 # Create new env with --system-site-packages → required for Picamera2
-conda create -n beemite_env --system-site-packages python=3.10 -y
+conda create -n beemite_env python=3.10 -y
 
 # Activate env
 eval "$(conda shell.bash hook)"
