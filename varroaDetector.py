@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 
 # Setup and check required packages
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -15,14 +16,15 @@ import supervision as sv
 from pathlib import Path
 import argparse
 import matplotlib.pyplot as plt
-# Optional PiCamera2 (commented — enable if you want real PiCam feed)
-# from picamera2 import Picamera2
 
 # === CLI ARGUMENTS ===
 parser = argparse.ArgumentParser(description='Bee + Varroa Mite Detector')
-parser.add_argument('--demo', action='store_true', help='Run in demo mode with fallback video')
-parser.add_argument('--picamera', action='store_true', help='Run with Raspberry Pi Camera (PiCamera2)')
+group = parser.add_mutually_exclusive_group()
+group.add_argument('--demo', action='store_true', help='Run in demo mode with fallback video')
+group.add_argument('--camera', action='store_true', help='Run with USB or CSI camera via OpenCV')
+group.add_argument('--picamera', action='store_true', help='Run with Raspberry Pi Camera (Picamera2)')
 args = parser.parse_args()
+
 
 # === CONFIGURATION ===
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -33,7 +35,7 @@ CAMERA_INDEX = 0
 FRAME_SKIP = 25
 CONFIDENCE_THRESHOLD = 0.25
 BEE_PADDING = 150
-NUM_RECENT_FRAMES_TO_KEEP = 10   # <=== You can control how many frames to keep
+NUM_RECENT_FRAMES_TO_KEEP = 10
 
 # === LOAD MODELS ===
 print("📦 Loading YOLO models...")
@@ -45,151 +47,203 @@ print(f'✅ Bee model loaded: {MODEL_BEE_PATH.name}')
 print(f'✅ Varroa model loaded: {MODEL_VARROA_PATH.name}')
 
 # === CAMERA / VIDEO SETUP ===
-USE_CAMERA = not args.demo
-USE_PICAMERA = args.picamera
+# Default behavior is Picamera2
+USE_CAMERA = False
+USE_PICAMERA = True
+frame_source = "PICAMERA"
+
+if args.demo:
+    USE_CAMERA = False
+    USE_PICAMERA = False
+    frame_source = "DEMO"
+elif args.camera:
+    USE_CAMERA = True
+    USE_PICAMERA = False
+    frame_source = "CAMERA"
+elif args.picamera:
+    USE_CAMERA = False
+    USE_PICAMERA = True
+    frame_source = "PICAMERA"
+
+# frame_source = "UNKNOWN"
 
 if USE_PICAMERA:
-    print("📷 Running with PiCamera2...")
-    from picamera2 import Picamera2
-    picam2 = Picamera2()
-    picam2.configure(picam2.create_preview_configuration(main={"format": "RGB888", "size": (640, 480)}))
-    picam2.start()
-elif USE_CAMERA:
-    print("🔍 Trying to open camera...")
+    try:
+        print("📷 Trying Picamera2...")
+        from picamera2 import Picamera2
+        picam2 = Picamera2()
+        picam2.configure(picam2.create_preview_configuration(main={"format": "RGB888", "size": (640, 480)}))
+        picam2.start()
+        frame_source = "PICAMERA"
+        print("✅ Picamera2 started.")
+    except Exception as e:
+        print(f"⚠️ Picamera2 failed to start: {e}")
+        USE_PICAMERA = False
+
+if not USE_PICAMERA and USE_CAMERA:
+    print("🔍 Trying to open cv2.VideoCapture(0)...")
     cap = cv2.VideoCapture(CAMERA_INDEX)
     if not cap.isOpened():
-        print("⚠️ Camera not detected — switching to demo mode.")
+        print("⚠️ Camera not detected — switching to DEMO mode.")
         USE_CAMERA = False
-        cap = cv2.VideoCapture(str(DEMO_VIDEO_PATH))
-else:
-    print("🎬 Running in demo mode.")
+    else:
+        # Test first frame read:
+        ret, frame = cap.read()
+        if not ret:
+            print("⚠️ Camera frame read failed — switching to DEMO mode.")
+            cap.release()
+            USE_CAMERA = False
+        else:
+            frame_source = "CAMERA"
+
+if not USE_PICAMERA and not USE_CAMERA:
+    print("🎬 Running in DEMO mode.")
     cap = cv2.VideoCapture(str(DEMO_VIDEO_PATH))
+    frame_source = "DEMO"
+    if not cap.isOpened():
+        print("❌ Failed to open DEMO video. Exiting.")
+        sys.exit(1)
+    else:
+        print(f"✅ Demo video opened: {DEMO_VIDEO_PATH}")
 
 # === MAIN LOOP ===
 frame_count = 0
 recent_frames = []
 
-print("🚀 Detection started (press 'q' to quit)...")
-
-if not USE_PICAMERA:
-    if cap.isOpened(): 
-        print(f'✅ Video opened: {DEMO_VIDEO_PATH if not USE_CAMERA else "Camera feed"}')
-    else:
-        print(f'❌ Failed to open video or camera.')
+print(f"🚀 Detection started from source [{frame_source}] (press 'q' to quit)...")
 
 while True:
-    # Capture frame
-    if USE_PICAMERA:
-        frame = picam2.capture_array()
-        ret = True
-    else:
-        ret, frame = cap.read()
-        if not ret:
-            print("⚠️ Frame not read. End of video or camera error.")
-            break
+    try:
+        # Capture frame
+        if USE_PICAMERA:
+            try:
+                frame = picam2.capture_array()
+                ret = True
+            except Exception as e:
+                print(f"⚠️ Picamera2 capture failed: {e} → switching to DEMO mode.")
+                picam2.stop()
+                USE_PICAMERA = False
+                cap = cv2.VideoCapture(str(DEMO_VIDEO_PATH))
+                frame_source = "DEMO"
+                continue
+        else:
+            ret, frame = cap.read()
+            if not ret:
+                print("⚠️ Frame not read. End of video or camera error.")
+                break
 
-    frame_count += 1
-    if frame_count % FRAME_SKIP != 0:
-        continue
-
-    original = frame.copy()
-    height, width = frame.shape[:2]
-    detections = bee_model(frame)[0].boxes
-
-    # Build detections for full frame annotation
-    bee_xyxy = np.array([box.xyxy[0].cpu().numpy() for box in detections], dtype=np.float32)
-    if bee_xyxy.shape[0] == 0:
-        bee_xyxy = np.empty((0, 4), dtype=np.float32)
-    
-    bee_conf = np.array([float(box.conf[0]) for box in detections], dtype=np.float32)
-    bee_class_id = np.zeros(len(detections), dtype=int)
-    
-    detections_bees_sv = sv.Detections(
-        xyxy=bee_xyxy,
-        class_id=bee_class_id,
-        confidence=bee_conf
-    )
-
-
-    if len(detections) > 0:
-        print(f"✅ Bee(s) detected in frame {frame_count}: {len(detections)} bees")
-    else:
-        print(f"⛔ No bee detected in frame {frame_count}")
-
-    frame_has_mites = False  # <=== Track whether this frame has mites on any bee
-
-    for box in detections:
-        x1, y1, x2, y2 = map(int, box.xyxy[0])
-        conf = float(box.conf[0])
-
-        if conf < CONFIDENCE_THRESHOLD:
+        frame_count += 1
+        if frame_count % FRAME_SKIP != 0:
             continue
 
-        # Pad crop
-        x1p = max(0, x1 - BEE_PADDING)
-        y1p = max(0, y1 - BEE_PADDING)
-        x2p = min(width, x2 + BEE_PADDING)
-        y2p = min(height, y2 + BEE_PADDING)
+        original = frame.copy()
+        height, width = frame.shape[:2]
 
-        bee_crop = frame[y1p:y2p, x1p:x2p]
+        # Inference for bee_model with timing
+        start_bee = time.time()
+        detections = bee_model(frame)[0].boxes
+        bee_inference_time = (time.time() - start_bee) * 1000  # ms
 
-        # Mite detection
-        mites = mite_model(bee_crop)[0].boxes
-        mite_boxes = []
-        mite_labels = []
-        mite_confs = []
+        # Build detections for full frame annotation
+        bee_xyxy = np.array([box.xyxy[0].cpu().numpy() for box in detections], dtype=np.float32)
+        if bee_xyxy.shape[0] == 0:
+            bee_xyxy = np.empty((0, 4), dtype=np.float32)
+        bee_conf = np.array([float(box.conf[0]) for box in detections], dtype=np.float32)
+        bee_class_id = np.zeros(len(detections), dtype=int)
 
-        for mbox in mites:
-            mx1, my1, mx2, my2 = map(int, mbox.xyxy[0])
-            mconf = float(mbox.conf[0])
-            if mconf >= CONFIDENCE_THRESHOLD:
-                mite_boxes.append([mx1, my1, mx2, my2])
-                mite_labels.append("Varroa")
-                mite_confs.append(mconf)
-                frame_has_mites = True   # <=== Set flag if any mite detected
-                print(f"🛑 MITE DETECTED in frame {frame_count}: bee crop [{x1p}:{x2p}, {y1p}:{y2p}] conf {mconf:.2f}")
-
-        # === SAFE HANDLING for empty detections ===
-        xyxy_array = np.array(mite_boxes, dtype=np.float32)
-        if xyxy_array.shape[0] == 0:
-            xyxy_array = np.empty((0, 4), dtype=np.float32)
-
-        detections_sv = sv.Detections(
-            xyxy=xyxy_array,
-            class_id=np.zeros(len(mite_boxes), dtype=int),
-            confidence=np.array(mite_confs, dtype=np.float32),
+        detections_bees_sv = sv.Detections(
+            xyxy=bee_xyxy,
+            class_id=bee_class_id,
+            confidence=bee_conf
         )
 
-        # Annotate bee crop
-        bee_crop_annotated = box_annotator.annotate(
-            bee_crop.copy(), detections=detections_sv
-        )
+        if len(detections) > 0:
+            print(f"✅ Bee(s) detected in frame {frame_count}: {len(detections)} bees")
+        else:
+            print(f"⛔ No bee detected in frame {frame_count}")
 
-        # Manual label drawing
-        for i, box in enumerate(mite_boxes):
-            x1, y1, x2, y2 = map(int, box)
-            label = f"{mite_labels[i]} ({mite_confs[i]:.2f})"
-            cv2.putText(bee_crop_annotated, label, (x1, y1 - 10), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+        frame_has_mites = False
 
-        # Put crop back into frame
-        frame[y1p:y2p, x1p:x2p] = bee_crop_annotated
-        cv2.imshow("Bee + Varroa Detector", frame)
+        for box in detections:
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            conf = float(box.conf[0])
 
+            if conf < CONFIDENCE_THRESHOLD:
+                continue
 
-    # === Keep only frames that have mites ===
-    if frame_has_mites:
-        print(f"📸 Saving frame {frame_count} with mites")
-        recent_frames = (recent_frames + [frame.copy()])[-NUM_RECENT_FRAMES_TO_KEEP:]
+            # Pad crop
+            x1p = max(0, x1 - BEE_PADDING)
+            y1p = max(0, y1 - BEE_PADDING)
+            x2p = min(width, x2 + BEE_PADDING)
+            y2p = min(height, y2 + BEE_PADDING)
 
-    # Annotate full frame with bee boxes
-    frame_annotated = box_annotator.annotate(frame.copy(), detections=detections_bees_sv)
+            bee_crop = frame[y1p:y2p, x1p:x2p]
 
-    # Show annotated frame
-    cv2.imshow("🐝 Bee + Varroa Detector", frame_annotated)
+            # Inference for mite_model with timing
+            start_mite = time.time()
+            mites = mite_model(bee_crop)[0].boxes
+            mite_inference_time = (time.time() - start_mite) * 1000  # ms
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        print("👋 Exiting.")
+            mite_boxes = []
+            mite_labels = []
+            mite_confs = []
+
+            for mbox in mites:
+                mx1, my1, mx2, my2 = map(int, mbox.xyxy[0])
+                mconf = float(mbox.conf[0])
+                if mconf >= CONFIDENCE_THRESHOLD:
+                    mite_boxes.append([mx1, my1, mx2, my2])
+                    mite_labels.append("Varroa")
+                    mite_confs.append(mconf)
+                    frame_has_mites = True
+                    print(f"🛑 MITE DETECTED in frame {frame_count}: bee crop [{x1p}:{x2p}, {y1p}:{y2p}] conf {mconf:.2f}")
+
+            xyxy_array = np.array(mite_boxes, dtype=np.float32)
+            if xyxy_array.shape[0] == 0:
+                xyxy_array = np.empty((0, 4), dtype=np.float32)
+
+            detections_sv = sv.Detections(
+                xyxy=xyxy_array,
+                class_id=np.zeros(len(mite_boxes), dtype=int),
+                confidence=np.array(mite_confs, dtype=np.float32),
+            )
+
+            bee_crop_annotated = box_annotator.annotate(
+                bee_crop.copy(), detections=detections_sv
+            )
+
+            for i, box in enumerate(mite_boxes):
+                x1, y1, x2, y2 = map(int, box)
+                label = f"{mite_labels[i]} ({mite_confs[i]:.2f})"
+                cv2.putText(bee_crop_annotated, label, (x1, y1 - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+
+            # Put crop back into frame
+            frame[y1p:y2p, x1p:x2p] = bee_crop_annotated
+
+            # Print mite model inference time:
+            print(f"⏱️ Mite model inference time: {mite_inference_time:.2f} ms")
+
+        # Keep only frames that have mites
+        if frame_has_mites:
+            print(f"📸 Saving frame {frame_count} with mites")
+            recent_frames = (recent_frames + [frame.copy()])[-NUM_RECENT_FRAMES_TO_KEEP:]
+
+        # Annotate full frame with bee boxes
+        frame_annotated = box_annotator.annotate(frame.copy(), detections=detections_bees_sv)
+
+        # Show annotated frame
+        cv2.imshow(f"🐝 Bee + Varroa Detector [{frame_source}]", frame_annotated)
+
+        # Print bee model inference time
+        print(f"⏱️ Bee model inference time: {bee_inference_time:.2f} ms")
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            print("👋 Exiting.")
+            break
+
+    except KeyboardInterrupt:
+        print("👋 Interrupted by user.")
         break
 
 # Cleanup
