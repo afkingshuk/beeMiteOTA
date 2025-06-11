@@ -12,6 +12,7 @@ REPO_URL="https://github.com/afkingshuk/beeMite.git"
 INSTALL_FLAG_FILE="$HOME/.beemite_installed"
 REPO_DIR="$HOME/beeMite"
 
+
 echo "Starting BeeMite setup..."
 
 if [ ! -f "$INSTALL_FLAG_FILE" ]; then
