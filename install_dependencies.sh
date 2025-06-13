@@ -42,15 +42,9 @@ eval "$(conda shell.bash hook)"
 conda activate beemite_env
 
 # Install required pip packages
-echo "📦 Installing Python packages in beemite_env from requirements.txt..."
+echo "📦 Installing Python packages in beemite_env..."
 pip install --upgrade pip
-pip install -r numpy matplotlib ultralytics supervision opencv-python-headless torch Adafruit_DHT
-
-
-
-# Install Adafruit_DHT explicitly (ensure it is present)
-echo "📦 Installing Adafruit_DHT..."
-pip install Adafruit_DHT
+pip install numpy matplotlib ultralytics supervision opencv-python-headless torch Adafruit_DHT
 
 echo "✅ beemite_env setup complete."
 echo "✅ install_dependencies.sh complete."
