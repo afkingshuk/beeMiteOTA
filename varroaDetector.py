@@ -38,10 +38,14 @@ print(f'✅ Varroa model loaded: {MODEL_VARROA_PATH.name}')
 # === CAMERA / VIDEO SETUP ===
 frame_source = "UNKNOWN"
 
+# Optional: suppress OpenCV WARNs during camera probe
+import cv2.utils
+cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_ERROR)
+
 if not args.demo:
     print("🔍 Searching for USB camera...")
     CAMERA_INDEX = -1
-    for i in range(5):
+    for i in range(10):  # probe /dev/video0..9
         cap = cv2.VideoCapture(i)
         if cap.isOpened():
             ret, frame = cap.read()
@@ -67,8 +71,9 @@ if args.demo:
         print(f"✅ Demo video opened: {DEMO_VIDEO_PATH}")
 else:
     cap = cv2.VideoCapture(CAMERA_INDEX)
-    frame_source = f"USB CAMERA [{CAMERA_INDEX}]"
-    print(f"✅ Using USB camera index {CAMERA_INDEX}")
+    frame_source = f"USB CAMERA /dev/video{CAMERA_INDEX}"
+    print(f"✅ Using USB camera index {CAMERA_INDEX} → /dev/video{CAMERA_INDEX}")
+
 
 # === MAIN LOOP ===
 frame_count = 0
