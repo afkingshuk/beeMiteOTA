@@ -52,9 +52,9 @@ print(f'✅ Varroa model loaded: {MODEL_VARROA_PATH.name}')
 # === CAMERA / VIDEO SETUP ===
 frame_source = "UNKNOWN"
 
-# Optional: suppress OpenCV WARNs during camera probe
-import cv2.utils
-cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_ERROR)
+# # Optional: suppress OpenCV WARNs during camera probe
+# import cv2.utils
+# cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_ERROR)
 
 if not args.demo:
     print("🔍 Searching for USB camera...")
