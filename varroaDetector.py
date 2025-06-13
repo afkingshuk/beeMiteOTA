@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
 import os
+# Force OpenCV to use X11 (works on Raspberry Pi OS Bookworm)
+os.environ["QT_QPA_PLATFORM"] = "xcb"
+
 import sys
 import time
 import signal
@@ -10,7 +13,6 @@ from ultralytics import YOLO
 import supervision as sv
 from pathlib import Path
 import argparse
-import matplotlib.pyplot as plt
 
 # === CLI ARGUMENTS ===
 parser = argparse.ArgumentParser(description='Bee + Varroa Mite Detector (USB Camera)')
@@ -24,7 +26,6 @@ MODEL_VARROA_PATH = PROJECT_DIR / "Models/yolov11_varroa.pt"
 DEMO_VIDEO_PATH = PROJECT_DIR / "Videos/VARROA MITE DETECTION AND SAMPLING.mp4"
 CONFIDENCE_THRESHOLD = 0.25
 BEE_PADDING = 150
-NUM_RECENT_FRAMES_TO_KEEP = 10
 FRAME_SKIP = 25
 
 # === SIGNAL HANDLER for safe camera release ===
@@ -35,10 +36,8 @@ def signal_handler(sig, frame):
     cv2.destroyAllWindows()
     sys.exit(0)
 
-# Catch Ctrl+C and SIGTERM
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
-
 
 # === LOAD MODELS ===
 print("📦 Loading YOLO models...")
@@ -52,27 +51,22 @@ print(f'✅ Varroa model loaded: {MODEL_VARROA_PATH.name}')
 # === CAMERA / VIDEO SETUP ===
 frame_source = "UNKNOWN"
 
-# # Optional: suppress OpenCV WARNs during camera probe
-# import cv2.utils
-# cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_ERROR)
+print("🔍 Searching for USB camera...")
+CAMERA_INDEX = -1
+for i in range(10):  # probe /dev/video0..9
+    cap = cv2.VideoCapture(i)
+    if cap.isOpened():
+        ret, frame = cap.read()
+        if ret:
+            CAMERA_INDEX = i
+            cap.release()
+            break
+        else:
+            cap.release()
 
-if not args.demo:
-    print("🔍 Searching for USB camera...")
-    CAMERA_INDEX = -1
-    for i in range(10):  # probe /dev/video0..9
-        cap = cv2.VideoCapture(i)
-        if cap.isOpened():
-            ret, frame = cap.read()
-            if ret:
-                CAMERA_INDEX = i
-                cap.release()
-                break
-            else:
-                cap.release()
-
-    if CAMERA_INDEX == -1:
-        print("⚠️ No USB camera detected. Switching to DEMO mode.")
-        args.demo = True
+if CAMERA_INDEX == -1:
+    print("⚠️ No USB camera detected. Switching to DEMO mode.")
+    args.demo = True
 
 if args.demo:
     print("🎬 Running in DEMO mode.")
@@ -88,10 +82,8 @@ else:
     frame_source = f"USB CAMERA /dev/video{CAMERA_INDEX}"
     print(f"✅ Using USB camera index {CAMERA_INDEX} → /dev/video{CAMERA_INDEX}")
 
-
 # === MAIN LOOP ===
 frame_count = 0
-recent_frames = []
 
 print(f"🚀 Detection started from source [{frame_source}] (press 'q' to quit)...")
 
@@ -108,7 +100,7 @@ while True:
 
         height, width = frame.shape[:2]
 
-        # Inference for bee_model with timing
+        # Bee detection
         start_bee = time.time()
         detections = bee_model(frame)[0].boxes
         bee_inference_time = (time.time() - start_bee) * 1000  # ms
@@ -131,9 +123,7 @@ while True:
         else:
             print(f"⛔ No bee detected in frame {frame_count}")
 
-        frame_has_mites = False
-
-        # === Annotate bee boxes first ===
+        # Annotate bee boxes first
         frame = box_annotator.annotate(frame, detections=detections_bees_sv)
 
         for box in detections:
@@ -151,7 +141,7 @@ while True:
 
             bee_crop = frame[y1p:y2p, x1p:x2p]
 
-            # Inference for mite_model with timing
+            # Mite detection
             start_mite = time.time()
             mites = mite_model(bee_crop)[0].boxes
             mite_inference_time = (time.time() - start_mite) * 1000  # ms
@@ -167,7 +157,6 @@ while True:
                     mite_boxes.append([mx1, my1, mx2, my2])
                     mite_labels.append("Varroa")
                     mite_confs.append(mconf)
-                    frame_has_mites = True
                     print(f"🛑 MITE DETECTED in frame {frame_count}: bee crop [{x1p}:{x2p}, {y1p}:{y2p}] conf {mconf:.2f}")
 
             xyxy_array = np.array(mite_boxes, dtype=np.float32)
@@ -195,14 +184,8 @@ while True:
 
             print(f"⏱️ Mite model inference time: {mite_inference_time:.2f} ms")
 
-        # Keep only frames that have mites
-        if frame_has_mites:
-            print(f"📸 Saving frame {frame_count} with mites")
-            recent_frames = (recent_frames + [frame.copy()])[-NUM_RECENT_FRAMES_TO_KEEP:]
-
         # Show fully annotated frame
         cv2.imshow(f"🐝 Bee + Varroa Detector [{frame_source}]", frame)
-
         print(f"⏱️ Bee model inference time: {bee_inference_time:.2f} ms")
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -216,21 +199,3 @@ while True:
 # Cleanup
 cap.release()
 cv2.destroyAllWindows()
-
-# === OPTIONAL: Plot last N frames ===
-if len(recent_frames) > 0:
-    print(f"\n🖼️ Displaying last {len(recent_frames)} frames with mites...")
-    cols = min(len(recent_frames), 6)
-    rows = (len(recent_frames) + cols - 1) // cols
-    fig, axes = plt.subplots(rows, cols, figsize=(18, 6 * rows))
-    axes = axes.flatten() if isinstance(axes, np.ndarray) else [axes]
-
-    for idx, img in enumerate(recent_frames):
-        axes[idx].imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-        axes[idx].axis('off')
-
-    for j in range(len(recent_frames), len(axes)):
-        axes[j].axis('off')
-
-    plt.tight_layout()
-    plt.show()
