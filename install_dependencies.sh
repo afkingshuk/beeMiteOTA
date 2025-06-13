@@ -44,7 +44,9 @@ conda activate beemite_env
 # Install required pip packages
 echo "📦 Installing Python packages in beemite_env from requirements.txt..."
 pip install --upgrade pip
-pip install -r $HOME/beeMite/requirements.txt
+pip install -r numpy matplotlib ultralytics supervision opencv-python-headless torch Adafruit_DHT
+
+
 
 # Install Adafruit_DHT explicitly (ensure it is present)
 echo "📦 Installing Adafruit_DHT..."
