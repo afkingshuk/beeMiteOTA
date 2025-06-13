@@ -25,6 +25,8 @@ else
     fi
 fi
 
+export QT_QPA_PLATFORM=xcb
+
 echo "🔍 CAMERA_AVAILABLE=$CAMERA_AVAILABLE"
 
 # Run detection based on availability
