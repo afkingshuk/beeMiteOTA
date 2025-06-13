@@ -4,4 +4,5 @@ ultralytics
 supervision
 opencv-python-headless
 torch
+Adafruit_DHT
 
