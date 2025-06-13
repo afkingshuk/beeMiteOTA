@@ -1,6 +1,6 @@
-torch==2.1.2
-ultralytics==8.3.149
-supervision==0.10.0
-opencv-python-headless==4.9.0.80
-matplotlib==3.8.4
-numpy<2
+numpy
+matplotlib
+ultralytics
+supervision
+opencv-python-headless
+torch

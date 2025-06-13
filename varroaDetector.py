@@ -1,14 +1,8 @@
+#!/usr/bin/env python3
+
 import os
 import sys
 import time
-
-# Setup and check required packages
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(PROJECT_DIR)
-from check_imports import check_and_install_requirements
-check_and_install_requirements(os.path.join(PROJECT_DIR, "requirements.txt"))
-
-# Now safe to import rest of modules
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -18,9 +12,8 @@ import argparse
 import matplotlib.pyplot as plt
 
 # === CLI ARGUMENTS ===
-parser = argparse.ArgumentParser(description='Bee + Varroa Mite Detector')
+parser = argparse.ArgumentParser(description='Bee + Varroa Mite Detector (USB Camera)')
 parser.add_argument('--demo', action='store_true', help='Run in demo mode with fallback video')
-parser.add_argument('--picamera', action='store_true', help='Run with Raspberry Pi Camera (PiCamera2)')
 args = parser.parse_args()
 
 # === CONFIGURATION ===
@@ -28,11 +21,10 @@ PROJECT_DIR = Path(__file__).resolve().parent
 MODEL_BEE_PATH = PROJECT_DIR / "Models/yolo11n_bee.pt"
 MODEL_VARROA_PATH = PROJECT_DIR / "Models/yolov11_varroa.pt"
 DEMO_VIDEO_PATH = PROJECT_DIR / "Videos/VARROA MITE DETECTION AND SAMPLING.mp4"
-CAMERA_INDEX = 0
-FRAME_SKIP = 25
 CONFIDENCE_THRESHOLD = 0.25
 BEE_PADDING = 150
 NUM_RECENT_FRAMES_TO_KEEP = 10
+FRAME_SKIP = 25
 
 # === LOAD MODELS ===
 print("📦 Loading YOLO models...")
@@ -44,40 +36,27 @@ print(f'✅ Bee model loaded: {MODEL_BEE_PATH.name}')
 print(f'✅ Varroa model loaded: {MODEL_VARROA_PATH.name}')
 
 # === CAMERA / VIDEO SETUP ===
-USE_CAMERA = not args.demo
-USE_PICAMERA = args.picamera
 frame_source = "UNKNOWN"
 
-if USE_PICAMERA:
-    try:
-        print("📷 Trying Picamera2...")
-        from picamera2 import Picamera2
-        picam2 = Picamera2()
-        picam2.configure(picam2.create_preview_configuration(main={"format": "RGB888", "size": (640, 480)}))
-        picam2.start()
-        frame_source = "PICAMERA"
-        print("✅ Picamera2 started.")
-    except Exception as e:
-        print(f"⚠️ Picamera2 failed to start: {e}")
-        USE_PICAMERA = False
+if not args.demo:
+    print("🔍 Searching for USB camera...")
+    CAMERA_INDEX = -1
+    for i in range(5):
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            ret, frame = cap.read()
+            if ret:
+                CAMERA_INDEX = i
+                cap.release()
+                break
+            else:
+                cap.release()
 
-if not USE_PICAMERA and USE_CAMERA:
-    print("🔍 Trying to open cv2.VideoCapture(0)...")
-    cap = cv2.VideoCapture(CAMERA_INDEX)
-    if not cap.isOpened():
-        print("⚠️ Camera not detected — switching to DEMO mode.")
-        USE_CAMERA = False
-    else:
-        # Test first frame read:
-        ret, frame = cap.read()
-        if not ret:
-            print("⚠️ Camera frame read failed — switching to DEMO mode.")
-            cap.release()
-            USE_CAMERA = False
-        else:
-            frame_source = "CAMERA"
+    if CAMERA_INDEX == -1:
+        print("⚠️ No USB camera detected. Switching to DEMO mode.")
+        args.demo = True
 
-if not USE_PICAMERA and not USE_CAMERA:
+if args.demo:
     print("🎬 Running in DEMO mode.")
     cap = cv2.VideoCapture(str(DEMO_VIDEO_PATH))
     frame_source = "DEMO"
@@ -86,6 +65,10 @@ if not USE_PICAMERA and not USE_CAMERA:
         sys.exit(1)
     else:
         print(f"✅ Demo video opened: {DEMO_VIDEO_PATH}")
+else:
+    cap = cv2.VideoCapture(CAMERA_INDEX)
+    frame_source = f"USB CAMERA [{CAMERA_INDEX}]"
+    print(f"✅ Using USB camera index {CAMERA_INDEX}")
 
 # === MAIN LOOP ===
 frame_count = 0
@@ -95,23 +78,10 @@ print(f"🚀 Detection started from source [{frame_source}] (press 'q' to quit).
 
 while True:
     try:
-        # Capture frame
-        if USE_PICAMERA:
-            try:
-                frame = picam2.capture_array()
-                ret = True
-            except Exception as e:
-                print(f"⚠️ Picamera2 capture failed: {e} → switching to DEMO mode.")
-                picam2.stop()
-                USE_PICAMERA = False
-                cap = cv2.VideoCapture(str(DEMO_VIDEO_PATH))
-                frame_source = "DEMO"
-                continue
-        else:
-            ret, frame = cap.read()
-            if not ret:
-                print("⚠️ Frame not read. End of video or camera error.")
-                break
+        ret, frame = cap.read()
+        if not ret:
+            print("⚠️ Frame not read. End of video or camera error.")
+            break
 
         frame_count += 1
         if frame_count % FRAME_SKIP != 0:
@@ -202,7 +172,6 @@ while True:
             # Put crop back into frame
             frame[y1p:y2p, x1p:x2p] = bee_crop_annotated
 
-            # Print mite model inference time:
             print(f"⏱️ Mite model inference time: {mite_inference_time:.2f} ms")
 
         # Keep only frames that have mites
@@ -216,7 +185,6 @@ while True:
         # Show annotated frame
         cv2.imshow(f"🐝 Bee + Varroa Detector [{frame_source}]", frame_annotated)
 
-        # Print bee model inference time
         print(f"⏱️ Bee model inference time: {bee_inference_time:.2f} ms")
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -228,11 +196,7 @@ while True:
         break
 
 # Cleanup
-if not USE_PICAMERA:
-    cap.release()
-else:
-    picam2.stop()
-
+cap.release()
 cv2.destroyAllWindows()
 
 # === OPTIONAL: Plot last N frames ===

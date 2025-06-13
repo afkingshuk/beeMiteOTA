@@ -42,13 +42,13 @@ eval "$(conda shell.bash hook)"
 conda activate beemite_env
 
 # Install required pip packages
-echo "📦 Installing Python packages from requirements.txt..."
+echo "📦 Installing Python packages in beemite_env from requirements.txt..."
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# Force reinstall Picamera2 (links to system libcamera)
-echo "📦 Installing Picamera2..."
-pip install --force-reinstall picamera2
+# # Force reinstall Picamera2 (links to system libcamera)
+# echo "📦 Installing Picamera2..."
+# pip install --force-reinstall picamera2
 
 echo "✅ beemite_env setup complete."
 

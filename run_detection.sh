@@ -27,7 +27,7 @@ else
 fi
 
 # Check if python3-picamera2 is available
-python3 -c "import picamera2" 2>/dev/null && PICAMERA2_AVAILABLE=1
+# python3 -c "import picamera2" 2>/dev/null && PICAMERA2_AVAILABLE=1
 
 echo "🔍 CAMERA_AVAILABLE=$CAMERA_AVAILABLE, PICAMERA2_AVAILABLE=$PICAMERA2_AVAILABLE"
 
