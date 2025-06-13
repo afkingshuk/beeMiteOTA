@@ -16,14 +16,13 @@ import argparse
 
 # === CLI ARGUMENTS ===
 parser = argparse.ArgumentParser(description='Bee + Varroa Mite Detector (USB Camera)')
-parser.add_argument('--demo', action='store_true', help='Run in demo mode with fallback video')
+parser.add_argument('--no-retry', action='store_true', help='Do not retry if no camera found (exit)')
 args = parser.parse_args()
 
 # === CONFIGURATION ===
 PROJECT_DIR = Path(__file__).resolve().parent
 MODEL_BEE_PATH = PROJECT_DIR / "Models/yolo11n_bee.pt"
 MODEL_VARROA_PATH = PROJECT_DIR / "Models/yolov11_varroa.pt"
-DEMO_VIDEO_PATH = PROJECT_DIR / "Videos/VARROA MITE DETECTION AND SAMPLING.mp4"
 CONFIDENCE_THRESHOLD = 0.25
 BEE_PADDING = 150
 FRAME_SKIP = 25
@@ -48,51 +47,79 @@ box_annotator = sv.BoxAnnotator()
 print(f'✅ Bee model loaded: {MODEL_BEE_PATH.name}')
 print(f'✅ Varroa model loaded: {MODEL_VARROA_PATH.name}')
 
-# === CAMERA / VIDEO SETUP ===
-frame_source = "UNKNOWN"
-
-print("🔍 Searching for USB camera...")
+# === CAMERA PROBE LOOP ===
 CAMERA_INDEX = -1
-for i in range(10):  # probe /dev/video0..9
-    cap = cv2.VideoCapture(i)
-    if cap.isOpened():
-        ret, frame = cap.read()
-        if ret:
-            CAMERA_INDEX = i
-            cap.release()
-            break
+cap = None
+frame_source = "USB CAMERA"
+
+while True:
+    print("🔍 Searching for USB camera...")
+    CAMERA_INDEX = -1
+    for i in range(10):  # probe /dev/video0..9
+        temp_cap = cv2.VideoCapture(i)
+        if temp_cap.isOpened():
+            ret, frame = temp_cap.read()
+            if ret:
+                CAMERA_INDEX = i
+                temp_cap.release()
+                break
+            else:
+                temp_cap.release()
+
+    if CAMERA_INDEX == -1:
+        print("⚠️ No USB camera detected.")
+        if args.no_retry:
+            print("❌ Exiting because --no-retry was specified.")
+            sys.exit(1)
         else:
-            cap.release()
-
-if CAMERA_INDEX == -1:
-    print("⚠️ No USB camera detected. Switching to DEMO mode.")
-    args.demo = True
-
-if args.demo:
-    print("🎬 Running in DEMO mode.")
-    cap = cv2.VideoCapture(str(DEMO_VIDEO_PATH))
-    frame_source = "DEMO"
-    if not cap.isOpened():
-        print("❌ Failed to open DEMO video. Exiting.")
-        sys.exit(1)
+            print("⏳ Retrying in 3 seconds...")
+            time.sleep(3)
+            continue
     else:
-        print(f"✅ Demo video opened: {DEMO_VIDEO_PATH}")
-else:
-    cap = cv2.VideoCapture(CAMERA_INDEX)
-    frame_source = f"USB CAMERA /dev/video{CAMERA_INDEX}"
-    print(f"✅ Using USB camera index {CAMERA_INDEX} → /dev/video{CAMERA_INDEX}")
+        cap = cv2.VideoCapture(CAMERA_INDEX)
+        print(f"✅ Using USB camera index {CAMERA_INDEX} → /dev/video{CAMERA_INDEX}")
+        break
 
 # === MAIN LOOP ===
 frame_count = 0
 
-print(f"🚀 Detection started from source [{frame_source}] (press 'q' to quit)...")
+print(f"🚀 Detection started from source [{frame_source} /dev/video{CAMERA_INDEX}] (press 'q' to quit)...")
 
 while True:
     try:
         ret, frame = cap.read()
         if not ret:
-            print("⚠️ Frame not read. End of video or camera error.")
-            break
+            print("⚠️ Frame not read. Camera may be disconnected.")
+            cap.release()
+
+            # Enter probe loop again
+            if args.no_retry:
+                print("❌ Exiting because --no-retry was specified.")
+                sys.exit(1)
+
+            print("⏳ Retrying camera connection...")
+            while True:
+                CAMERA_INDEX = -1
+                for i in range(10):
+                    temp_cap = cv2.VideoCapture(i)
+                    if temp_cap.isOpened():
+                        ret, frame = temp_cap.read()
+                        if ret:
+                            CAMERA_INDEX = i
+                            temp_cap.release()
+                            break
+                        else:
+                            temp_cap.release()
+
+                if CAMERA_INDEX == -1:
+                    print("⚠️ No USB camera detected. Retrying in 3 seconds...")
+                    time.sleep(3)
+                    continue
+                else:
+                    cap = cv2.VideoCapture(CAMERA_INDEX)
+                    print(f"✅ Reconnected to USB camera index {CAMERA_INDEX} → /dev/video{CAMERA_INDEX}")
+                    break
+            continue  # Go to next loop iteration
 
         frame_count += 1
         if frame_count % FRAME_SKIP != 0:
@@ -185,7 +212,7 @@ while True:
             print(f"⏱️ Mite model inference time: {mite_inference_time:.2f} ms")
 
         # Show fully annotated frame
-        cv2.imshow(f"🐝 Bee + Varroa Detector [{frame_source}]", frame)
+        cv2.imshow(f"🐝 Bee + Varroa Detector [{frame_source} /dev/video{CAMERA_INDEX}]", frame)
         print(f"⏱️ Bee model inference time: {bee_inference_time:.2f} ms")
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
