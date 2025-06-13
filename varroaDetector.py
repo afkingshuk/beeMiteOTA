@@ -3,6 +3,7 @@
 import os
 import sys
 import time
+import signal
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -10,6 +11,10 @@ import supervision as sv
 from pathlib import Path
 import argparse
 import matplotlib.pyplot as plt
+
+# Catch Ctrl+C and SIGTERM
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 # === CLI ARGUMENTS ===
 parser = argparse.ArgumentParser(description='Bee + Varroa Mite Detector (USB Camera)')
@@ -25,6 +30,20 @@ CONFIDENCE_THRESHOLD = 0.25
 BEE_PADDING = 150
 NUM_RECENT_FRAMES_TO_KEEP = 10
 FRAME_SKIP = 25
+
+
+# === SIGNAL HANDLER for safe camera release ===
+def signal_handler(sig, frame):
+    print('👋 Caught interrupt — releasing camera...')
+    if 'cap' in globals() and cap is not None and cap.isOpened():
+        cap.release()
+    cv2.destroyAllWindows()
+    sys.exit(0)
+
+# Catch Ctrl+C and SIGTERM
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
 
 # === LOAD MODELS ===
 print("📦 Loading YOLO models...")
