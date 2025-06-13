@@ -3,7 +3,7 @@ set -e
 
 ENV_NAME="beemite_env"
 REPO_DIR="$HOME/beeMite"
-PYTHON_SCRIPT="usb_cam_live_dht22.py"
+PYTHON_SCRIPT="varroaDetector.py"
 
 # Activate conda environment
 echo "🟢 Activating conda environment: $ENV_NAME..."
