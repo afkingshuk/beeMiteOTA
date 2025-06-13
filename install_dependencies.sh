@@ -44,7 +44,9 @@ conda activate beemite_env
 # Install required pip packages
 echo "📦 Installing Python packages in beemite_env..."
 pip install --upgrade pip
-pip install numpy matplotlib ultralytics supervision opencv-python-headless torch Adafruit_DHT
+pip install numpy matplotlib ultralytics supervision opencv-python-headless torch
+pip install adafruit-circuitpython-dht adafruit-blinka
+
 
 echo "✅ beemite_env setup complete."
 echo "✅ install_dependencies.sh complete."

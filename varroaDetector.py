@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
 import os
-os.environ["QT_QPA_PLATFORM"] = "xcb"
-
 import sys
 import time
 import signal
@@ -13,31 +11,33 @@ from ultralytics import YOLO
 import supervision as sv
 from pathlib import Path
 import argparse
-import Adafruit_DHT
-from datetime import datetime
+import matplotlib.pyplot as plt
+
+# DHT22 Sensor
+import adafruit_dht
+import board
 
 # === CLI ARGUMENTS ===
-parser = argparse.ArgumentParser(description='Bee + Varroa Mite Detector + DHT22 Logger')
-parser.add_argument('--no-retry', action='store_true', help='Do not retry if no camera found (exit)')
+parser = argparse.ArgumentParser(description='Bee + Varroa Mite Detector (USB Camera + DHT22)')
+parser.add_argument('--demo', action='store_true', help='Run in demo mode with fallback video')
 args = parser.parse_args()
 
 # === CONFIGURATION ===
 PROJECT_DIR = Path(__file__).resolve().parent
 MODEL_BEE_PATH = PROJECT_DIR / "Models/yolo11n_bee.pt"
 MODEL_VARROA_PATH = PROJECT_DIR / "Models/yolov11_varroa.pt"
+DEMO_VIDEO_PATH = PROJECT_DIR / "Videos/VARROA MITE DETECTION AND SAMPLING.mp4"
 CONFIDENCE_THRESHOLD = 0.25
 BEE_PADDING = 150
 FRAME_SKIP = 25
-LOG_DIR = PROJECT_DIR / "beeMite_logs"
-LOG_CSV = LOG_DIR / "bee_mite_log.csv"
+CSV_LOG_PATH = PROJECT_DIR / "bee_varroa_log.csv"
 
-# DHT22 Config
-DHT_SENSOR = Adafruit_DHT.DHT22
-DHT_PIN = 26  # GPIO26 → pin 32
+# Setup DHT22 (GPIO26 pin 32)
+dhtDevice = adafruit_dht.DHT22(board.D26)
 
-# === SIGNAL HANDLER ===
+# === SIGNAL HANDLER for safe release ===
 def signal_handler(sig, frame):
-    print('👋 Caught interrupt — releasing camera...')
+    print('👋 Caught interrupt — releasing camera & cleaning up...')
     if 'cap' in globals() and cap is not None and cap.isOpened():
         cap.release()
     cv2.destroyAllWindows()
@@ -55,106 +55,63 @@ box_annotator = sv.BoxAnnotator()
 print(f'✅ Bee model loaded: {MODEL_BEE_PATH.name}')
 print(f'✅ Varroa model loaded: {MODEL_VARROA_PATH.name}')
 
-# === INIT LOGGING ===
-os.makedirs(LOG_DIR, exist_ok=True)
-
-if not LOG_CSV.exists():
-    with open(LOG_CSV, "w", newline="") as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(["timestamp", "temp_C", "humidity_pct", "bee_count", "mite_count"])
-    print(f'✅ CSV log initialized at: {LOG_CSV}')
-else:
-    print(f'✅ Logging to existing CSV: {LOG_CSV}')
-
-# === CAMERA PROBE LOOP ===
-CAMERA_INDEX = -1
-cap = None
-frame_source = "USB CAMERA"
-
-while True:
+# === CAMERA SETUP ===
+frame_source = "UNKNOWN"
+if not args.demo:
     print("🔍 Searching for USB camera...")
     CAMERA_INDEX = -1
     for i in range(10):
-        temp_cap = cv2.VideoCapture(i)
-        if temp_cap.isOpened():
-            ret, frame = temp_cap.read()
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            ret, frame = cap.read()
             if ret:
                 CAMERA_INDEX = i
-                temp_cap.release()
+                cap.release()
                 break
             else:
-                temp_cap.release()
-
+                cap.release()
     if CAMERA_INDEX == -1:
-        print("⚠️ No USB camera detected.")
-        if args.no_retry:
-            print("❌ Exiting because --no-retry was specified.")
-            sys.exit(1)
-        else:
-            print("⏳ Retrying in 3 seconds...")
-            time.sleep(3)
-            continue
+        print("⚠️ No USB camera detected. Switching to DEMO mode.")
+        args.demo = True
+
+if args.demo:
+    print("🎬 Running in DEMO mode.")
+    cap = cv2.VideoCapture(str(DEMO_VIDEO_PATH))
+    frame_source = "DEMO"
+    if not cap.isOpened():
+        print("❌ Failed to open DEMO video. Exiting.")
+        sys.exit(1)
     else:
-        cap = cv2.VideoCapture(CAMERA_INDEX)
-        print(f"✅ Using USB camera index {CAMERA_INDEX} → /dev/video{CAMERA_INDEX}")
-        break
+        print(f"✅ Demo video opened: {DEMO_VIDEO_PATH}")
+else:
+    cap = cv2.VideoCapture(CAMERA_INDEX)
+    frame_source = f"USB CAMERA /dev/video{CAMERA_INDEX}"
+    print(f"✅ Using USB camera index {CAMERA_INDEX} → /dev/video{CAMERA_INDEX}")
+
+# === CSV LOG SETUP ===
+if not CSV_LOG_PATH.exists():
+    with open(CSV_LOG_PATH, 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(["Timestamp", "Temperature_C", "Humidity_%", "Bee_Count", "Mite_Count"])
+    print(f"✅ CSV log initialized: {CSV_LOG_PATH}")
 
 # === MAIN LOOP ===
 frame_count = 0
 
-print(f"🚀 Detection started from source [{frame_source} /dev/video{CAMERA_INDEX}] (press 'q' to quit)...")
+print(f"🚀 Detection started from source [{frame_source}] (press 'q' to quit)...")
 
 while True:
     try:
         ret, frame = cap.read()
         if not ret:
-            print("⚠️ Frame not read. Camera may be disconnected.")
-            cap.release()
-
-            if args.no_retry:
-                print("❌ Exiting because --no-retry was specified.")
-                sys.exit(1)
-
-            print("⏳ Retrying camera connection...")
-            while True:
-                CAMERA_INDEX = -1
-                for i in range(10):
-                    temp_cap = cv2.VideoCapture(i)
-                    if temp_cap.isOpened():
-                        ret, frame = temp_cap.read()
-                        if ret:
-                            CAMERA_INDEX = i
-                            temp_cap.release()
-                            break
-                        else:
-                            temp_cap.release()
-
-                if CAMERA_INDEX == -1:
-                    print("⚠️ No USB camera detected. Retrying in 3 seconds...")
-                    time.sleep(3)
-                    continue
-                else:
-                    cap = cv2.VideoCapture(CAMERA_INDEX)
-                    print(f"✅ Reconnected to USB camera index {CAMERA_INDEX} → /dev/video{CAMERA_INDEX}")
-                    break
-            continue
+            print("⚠️ Frame not read. End of video or camera error.")
+            break
 
         frame_count += 1
         if frame_count % FRAME_SKIP != 0:
             continue
 
         height, width = frame.shape[:2]
-
-        # Read DHT22
-        humidity, temperature = Adafruit_DHT.read_retry(DHT_SENSOR, DHT_PIN)
-        if humidity is None or temperature is None:
-            temp_C = "NaN"
-            humidity_pct = "NaN"
-            print("⚠️ Failed to read DHT22 sensor.")
-        else:
-            temp_C = round(temperature, 2)
-            humidity_pct = round(humidity, 2)
-            print(f"🌡️ Temp: {temp_C}°C  💧 Humidity: {humidity_pct}%")
 
         # Bee detection
         start_bee = time.time()
@@ -176,17 +133,12 @@ while True:
         bee_count = len(detections)
         mite_count = 0
 
-        if bee_count > 0:
-            print(f"✅ Bee(s) detected in frame {frame_count}: {bee_count} bees")
-        else:
-            print(f"⛔ No bee detected in frame {frame_count}")
-
+        # Annotate bees
         frame = box_annotator.annotate(frame, detections=detections_bees_sv)
 
         for box in detections:
             x1, y1, x2, y2 = map(int, box.xyxy[0])
             conf = float(box.conf[0])
-
             if conf < CONFIDENCE_THRESHOLD:
                 continue
 
@@ -213,7 +165,7 @@ while True:
                     mite_labels.append("Varroa")
                     mite_confs.append(mconf)
                     mite_count += 1
-                    print(f"🛑 MITE DETECTED in frame {frame_count} conf {mconf:.2f}")
+                    print(f"🛑 MITE DETECTED in frame {frame_count}: bee crop [{x1p}:{x2p}, {y1p}:{y2p}] conf {mconf:.2f}")
 
             xyxy_array = np.array(mite_boxes, dtype=np.float32)
             if xyxy_array.shape[0] == 0:
@@ -239,14 +191,24 @@ while True:
 
             print(f"⏱️ Mite model inference time: {mite_inference_time:.2f} ms")
 
-        # Log CSV
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with open(LOG_CSV, "a", newline="") as csvfile:
+        # Read DHT22
+        try:
+            temperature_c = dhtDevice.temperature
+            humidity = dhtDevice.humidity
+            print(f"🌡️ Temp: {temperature_c:.1f}°C, Humidity: {humidity:.1f}%, Bees: {bee_count}, Mites: {mite_count}")
+        except Exception as e:
+            print(f"DHT read error: {e}")
+            temperature_c = None
+            humidity = None
+
+        # Append to CSV
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        with open(CSV_LOG_PATH, 'a', newline='') as csvfile:
             writer = csv.writer(csvfile)
-            writer.writerow([timestamp, temp_C, humidity_pct, bee_count, mite_count])
+            writer.writerow([timestamp, temperature_c, humidity, bee_count, mite_count])
 
         # Show frame
-        cv2.imshow(f"🐝 Bee + Varroa Detector + DHT22 [{frame_source} /dev/video{CAMERA_INDEX}]", frame)
+        cv2.imshow(f"🐝 Bee + Varroa + DHT22 Detector [{frame_source}]", frame)
         print(f"⏱️ Bee model inference time: {bee_inference_time:.2f} ms")
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -257,5 +219,6 @@ while True:
         print("👋 Interrupted by user.")
         break
 
+# Cleanup
 cap.release()
 cv2.destroyAllWindows()
