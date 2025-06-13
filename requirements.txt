@@ -4,3 +4,4 @@ ultralytics
 supervision
 opencv-python-headless
 torch
+

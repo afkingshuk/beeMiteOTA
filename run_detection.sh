@@ -2,7 +2,7 @@
 
 ENV_NAME="beemite_env"
 REPO_DIR="$HOME/beeMite"
-PYTHON_SCRIPT="varroaDetector.py"
+PYTHON_SCRIPT="usb_cam_detector.py"
 
 # Activate conda environment
 echo "🟢 Activating conda environment: $ENV_NAME..."
@@ -11,9 +11,8 @@ conda activate $ENV_NAME
 
 # Check camera availability
 CAMERA_AVAILABLE=0
-PICAMERA2_AVAILABLE=0
 
-# Check if v4l2-ctl is available (for USB cam or Pi cam in v4l2 mode)
+# Check if v4l2-ctl is available (for USB camera detection)
 if command -v v4l2-ctl &>/dev/null; then
     if v4l2-ctl --list-devices | grep -q "video"; then
         CAMERA_AVAILABLE=1
@@ -26,20 +25,14 @@ else
     fi
 fi
 
-# Check if python3-picamera2 is available
-# python3 -c "import picamera2" 2>/dev/null && PICAMERA2_AVAILABLE=1
-
-echo "🔍 CAMERA_AVAILABLE=$CAMERA_AVAILABLE, PICAMERA2_AVAILABLE=$PICAMERA2_AVAILABLE"
+echo "🔍 CAMERA_AVAILABLE=$CAMERA_AVAILABLE"
 
 # Run detection based on availability
-if [[ $PICAMERA2_AVAILABLE -eq 1 && $CAMERA_AVAILABLE -eq 1 ]]; then
-    echo "🚀 Running with PiCamera2..."
-    python3 "$REPO_DIR/$PYTHON_SCRIPT" --picamera || echo "❌ ERROR running with PiCamera2."
-elif [[ $CAMERA_AVAILABLE -eq 1 ]]; then
-    echo "🚀 Running with standard camera (cv2)..."
-    python3 "$REPO_DIR/$PYTHON_SCRIPT" || echo "❌ ERROR running with standard camera."
+if [[ $CAMERA_AVAILABLE -eq 1 ]]; then
+    echo "🚀 Running with USB camera (cv2)..."
+    python3 "$REPO_DIR/$PYTHON_SCRIPT" || echo "❌ ERROR running with USB camera."
 else
-    echo "⚠️ No camera detected. Running in DEMO mode..."
+    echo "⚠️ No USB camera detected. Running in DEMO mode..."
     python3 "$REPO_DIR/$PYTHON_SCRIPT" --demo || echo "❌ ERROR running in DEMO mode."
 fi
 

@@ -1,17 +1,14 @@
 #!/bin/bash
 set -e
 
-echo "📦 Installing system dependencies..."
+echo "📦 Installing system dependencies (USB camera version)..."
 
-# SYSTEM PACKAGES FIRST (libcamera stack + Picamera2 deps)
+# SYSTEM PACKAGES FIRST (no Picamera2 needed)
 sudo apt update
 sudo apt install -y \
-    python3-libcamera libcamera-apps libcamera-dev python3-prctl libcap-dev \
-    python3-kms++ python3-pyqt6 \
     libjpeg-dev libtiff-dev libpng-dev \
     libavcodec-dev libavformat-dev libswscale-dev libv4l-dev v4l-utils \
     build-essential python3-pip git
-
 
 # INSTALL MINIFORGE (if not installed)
 if ! command -v conda &> /dev/null; then
@@ -25,20 +22,25 @@ if ! command -v conda &> /dev/null; then
     source ~/.bashrc
 else
     echo "✅ Conda already installed."
-    eval "$(conda shell.bash hook)"
+    eval "$($HOME/miniforge3/bin/conda shell.bash hook)"
 fi
 
-
-#echo "🐍 Setting up beemite_env conda environment..."
+# SETUP ENVIRONMENT
+echo "🐍 Setting up beemite_env conda environment..."
 
 # Remove existing env if present
-conda remove -n beemite_env --all -y || true
+if conda env list | grep -q beemite_env; then
+    echo "🗑️ Removing existing beemite_env..."
+    conda remove -n beemite_env --all -y
+else
+    echo "ℹ️ Conda env beemite_env does not exist, skipping removal."
+fi
 
 # Create new env
 conda create -n beemite_env python=3.10 -y
 
 # Activate env
-eval "$(conda shell.bash hook)"
+eval "$($HOME/miniforge3/bin/conda shell.bash hook)"
 conda activate beemite_env
 
 # Install required pip packages
@@ -46,12 +48,5 @@ echo "📦 Installing Python packages in beemite_env from requirements.txt..."
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# # Force reinstall Picamera2 (links to system libcamera)
-# echo "📦 Installing Picamera2..."
-# pip install --force-reinstall picamera2
-
 echo "✅ beemite_env setup complete."
-
-
-
 echo "✅ install_dependencies.sh complete."

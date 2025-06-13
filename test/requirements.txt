@@ -4,3 +4,10 @@ supervision
 opencv-python-headless
 matplotlib
 numpy
+
+opencv-python-headless==4.9.0.80
+ultralytics==8.1.25
+supervision==0.10.0
+matplotlib==3.7.3
+numpy==1.26.4  # or you can pin to numpy<2 if needed for PyTorch compatibility
+torch==2.1.0  # or match your specific PyTorch version
