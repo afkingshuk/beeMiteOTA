@@ -1,8 +1,9 @@
 #!/bin/bash
+set -e
 
 ENV_NAME="beemite_env"
 REPO_DIR="$HOME/beeMite"
-PYTHON_SCRIPT="varroaDetector.py"
+PYTHON_SCRIPT="usb_cam_live_dht22.py"
 
 # Activate conda environment
 echo "🟢 Activating conda environment: $ENV_NAME..."
@@ -12,7 +13,7 @@ conda activate $ENV_NAME
 # Check camera availability
 CAMERA_AVAILABLE=0
 
-# Check if v4l2-ctl is available (for USB camera detection)
+# Check if v4l2-ctl is available
 if command -v v4l2-ctl &>/dev/null; then
     if v4l2-ctl --list-devices | grep -q "video"; then
         CAMERA_AVAILABLE=1
@@ -25,17 +26,15 @@ else
     fi
 fi
 
-export QT_QPA_PLATFORM=xcb
-
 echo "🔍 CAMERA_AVAILABLE=$CAMERA_AVAILABLE"
 
 # Run detection based on availability
 if [[ $CAMERA_AVAILABLE -eq 1 ]]; then
-    echo "🚀 Running with USB camera (cv2)..."
-    python3 "$REPO_DIR/$PYTHON_SCRIPT" || echo "❌ ERROR running with USB camera."
+    echo "🚀 Running usb_cam_live_dht22.py (USB camera + DHT22 logging)..."
+    python3 "$REPO_DIR/$PYTHON_SCRIPT" || echo "❌ ERROR running usb_cam_live_dht22.py."
 else
-    echo "⚠️ No USB camera detected. Running in DEMO mode..."
-    python3 "$REPO_DIR/$PYTHON_SCRIPT" --demo || echo "❌ ERROR running in DEMO mode."
+    echo "❌ No camera detected — cannot run detection."
+    exit 1
 fi
 
 echo "✅ run_detection.sh complete."
