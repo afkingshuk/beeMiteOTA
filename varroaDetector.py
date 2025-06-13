@@ -12,9 +12,6 @@ from pathlib import Path
 import argparse
 import matplotlib.pyplot as plt
 
-# Catch Ctrl+C and SIGTERM
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
 
 # === CLI ARGUMENTS ===
 parser = argparse.ArgumentParser(description='Bee + Varroa Mite Detector (USB Camera)')
