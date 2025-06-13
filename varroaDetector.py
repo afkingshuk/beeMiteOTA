@@ -87,7 +87,6 @@ while True:
         if frame_count % FRAME_SKIP != 0:
             continue
 
-        original = frame.copy()
         height, width = frame.shape[:2]
 
         # Inference for bee_model with timing
@@ -114,6 +113,9 @@ while True:
             print(f"⛔ No bee detected in frame {frame_count}")
 
         frame_has_mites = False
+
+        # === Annotate bee boxes first ===
+        frame = box_annotator.annotate(frame, detections=detections_bees_sv)
 
         for box in detections:
             x1, y1, x2, y2 = map(int, box.xyxy[0])
@@ -179,11 +181,8 @@ while True:
             print(f"📸 Saving frame {frame_count} with mites")
             recent_frames = (recent_frames + [frame.copy()])[-NUM_RECENT_FRAMES_TO_KEEP:]
 
-        # Annotate full frame with bee boxes
-        frame_annotated = box_annotator.annotate(frame.copy(), detections=detections_bees_sv)
-
-        # Show annotated frame
-        cv2.imshow(f"🐝 Bee + Varroa Detector [{frame_source}]", frame_annotated)
+        # Show fully annotated frame
+        cv2.imshow(f"🐝 Bee + Varroa Detector [{frame_source}]", frame)
 
         print(f"⏱️ Bee model inference time: {bee_inference_time:.2f} ms")
 
