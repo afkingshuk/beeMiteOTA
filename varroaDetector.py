@@ -12,7 +12,6 @@ from pathlib import Path
 import argparse
 import matplotlib.pyplot as plt
 
-
 # === CLI ARGUMENTS ===
 parser = argparse.ArgumentParser(description='Bee + Varroa Mite Detector (USB Camera)')
 parser.add_argument('--demo', action='store_true', help='Run in demo mode with fallback video')
@@ -27,7 +26,6 @@ CONFIDENCE_THRESHOLD = 0.25
 BEE_PADDING = 150
 NUM_RECENT_FRAMES_TO_KEEP = 10
 FRAME_SKIP = 25
-
 
 # === SIGNAL HANDLER for safe camera release ===
 def signal_handler(sig, frame):
